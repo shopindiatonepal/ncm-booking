@@ -61,14 +61,29 @@ async function ncm(method, p, body) {
   return data;
 }
 
+// NCM wraps lists in different shapes ([...], {data:[...]}, {data:{branches:[...]}}, {"1":{...}}); find the list wherever it is.
+function toList(d, depth = 0) {
+  if (Array.isArray(d)) return d;
+  if (!d || typeof d !== 'object' || depth > 3) return [];
+  for (const k of ['data', 'results', 'result', 'branches', 'branchlist', 'items', 'orders']) {
+    if (d[k] != null) { const l = toList(d[k], depth + 1); if (l.length) return l; }
+  }
+  const vals = Object.values(d);
+  const firstArr = vals.find((v) => Array.isArray(v) && v.length);
+  if (firstArr) return firstArr;
+  if (vals.length && vals.every((v) => v && typeof v === 'object')) return vals;
+  return [];
+}
+
 let branchCache = null; // [{name, raw}]
 async function getBranchObjs() {
   if (branchCache) return branchCache;
   if (TEST_MODE) return ['KATHMANDU', 'TINKUNE', 'POKHARA', 'BIRATNAGAR', 'BUTWAL', 'CHITWAN'].map((name) => ({ name, raw: {} }));
   const d = await ncm('GET', '/api/v1/branchlist');
-  const list = Array.isArray(d) ? d : d.data || d.results || [];
-  branchCache = list.map((b) => (typeof b === 'string' ? { name: b, raw: {} } : { name: b.name, raw: b })).filter((b) => b.name)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const nameOf = (b) => typeof b === 'string' ? b : Array.isArray(b) ? b.find((x) => typeof x === 'string') : b && (b.name || b.branch_name || b.branch || b.Name);
+  const list = toList(d).map((b) => ({ name: nameOf(b), raw: b && typeof b === 'object' && !Array.isArray(b) ? b : {} })).filter((b) => b.name);
+  if (!list.length) throw new Error('Could not read the branch list. NCM sent: ' + JSON.stringify(d).slice(0, 250));
+  branchCache = list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return branchCache;
 }
 const getBranches = async () => (await getBranchObjs()).map((b) => b.name);
@@ -88,7 +103,7 @@ async function statusOf(order) {
   if (TEST_MODE || !order.ncmId) return order.status;
   try {
     const d = await ncm('GET', '/api/v1/order/status?id=' + encodeURIComponent(order.ncmId));
-    const arr = Array.isArray(d) ? d : d.data || d.result || [];
+    const arr = toList(d);
     if (arr.length) {
       const last = arr[arr.length - 1];
       return typeof last === 'string' ? last : last.status || order.status;
@@ -220,7 +235,7 @@ http.createServer(async (req, res) => {
         if (!order) return send(res, 404, { error: 'Order not found' });
         if (TEST_MODE || String(id).startsWith('TEST-')) return send(res, 200, { order, history: [{ status: order.status, time: order.createdAt }], comments: [] });
         const pick = (x, ...keys) => { for (const k of keys) if (x && x[k] != null && x[k] !== '') return x[k]; return ''; };
-        const arr = (d) => (Array.isArray(d) ? d : d.data || d.result || d.results || []);
+        const arr = toList;
         const [st, cm] = await Promise.allSettled([ncm('GET', '/api/v1/order/status?id=' + encodeURIComponent(id)), ncm('GET', '/api/v1/order/comment?id=' + encodeURIComponent(id))]);
         const history = st.status === 'fulfilled' ? arr(st.value).map((x) => typeof x === 'string' ? { status: x, time: '' } : { status: pick(x, 'status', 'Status'), time: pick(x, 'added_time', 'addedTime', 'time', 'date') }) : [];
         const comments = cm.status === 'fulfilled' ? arr(cm.value).map((x) => typeof x === 'string' ? { text: x } : { text: pick(x, 'comments', 'comment', 'text'), by: pick(x, 'addedBy', 'added_by', 'user'), time: pick(x, 'added_time', 'addedTime', 'time', 'date') }) : [];
@@ -254,6 +269,6 @@ http.createServer(async (req, res) => {
   } catch (e) {
     console.error(e.status || '', e.message, JSON.stringify(e.data || ''));
     const msg = e.data ? (typeof e.data === 'string' ? e.data : JSON.stringify(e.data)) : e.message;
-    send(res, e.status && e.status < 500 ? 400 : 502, { error: 'Courier said: ' + msg.slice(0, 300) });
+    send(res, e.status && e.status < 500 ? 400 : 502, { error: (e.status ? 'Courier said: ' : 'Problem: ') + msg.slice(0, 300) });
   }
 }).listen(PORT, () => console.log(`Running on :${PORT}  ${TEST_MODE ? '(TEST MODE: no NCM_TOKEN set)' : '(live: ' + NCM_BASE + ')'}`));
