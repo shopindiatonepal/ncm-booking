@@ -261,6 +261,44 @@ http.createServer(async (req, res) => {
         return send(res, 200, { order, history, comments });
       }
 
+      // ---- edit / delete / message ----
+      // NCM's public API has no documented edit or cancel call, so edits and deletes change THIS site's list only.
+      // To reach NCM, we post a comment on the order (the same comment feature NCM shows its staff).
+      if (url.pathname.startsWith('/api/order/') && req.method === 'POST') {
+        const b = await readBody(req);
+        const all = await loadOrders();
+        const o = all.find((x) => String(x.ncmId) === String(b.ncmId));
+        if (!o) return send(res, 404, { error: 'Order not found' });
+        const live = !TEST_MODE && !String(o.ncmId).startsWith('TEST-');
+        const comment = (text) => ncm('POST', '/api/v1/order/comment', { orderid: Number(o.ncmId) || o.ncmId, comments: String(text).slice(0, 500) });
+
+        if (url.pathname === '/api/order/update') {
+          const next = { name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
+            packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)), description: clean(b.description, 300) };
+          if (!next.name || !next.address || next.phone.length < 10 || !next.packageType) return send(res, 400, { error: 'Name, address, a 10-digit phone and package type are required' });
+          const changes = Object.keys(next).filter((k) => String(o[k] ?? '') !== String(next[k]));
+          Object.assign(o, next, { editedAt: new Date().toISOString() });
+          await saveOrders(all);
+          let noteSent = false, noteError = '';
+          if (b.notify && live && changes.length) {
+            try { await comment('Vendor updated details: ' + changes.map((k) => `${k}: ${next[k]}`).join('; ')); noteSent = true; } catch (e) { noteError = e.message; }
+          }
+          return send(res, 200, { ok: true, order: o, changes: changes.length, noteSent, noteError });
+        }
+        if (url.pathname === '/api/order/note') {
+          const text = clean(b.text, 500);
+          if (!text) return send(res, 400, { error: 'Write a message first' });
+          if (!live) return send(res, 200, { ok: true, note: 'Test order: message not sent to NCM' });
+          await comment(text);
+          return send(res, 200, { ok: true });
+        }
+        if (url.pathname === '/api/order/delete') {
+          await saveOrders(all.filter((x) => x !== o));
+          return send(res, 200, { ok: true });
+        }
+        return send(res, 404, { error: 'Not found' });
+      }
+
       if (url.pathname === '/api/refresh' && req.method === 'POST') {
         const all = await loadOrders();
         let n = 0;
