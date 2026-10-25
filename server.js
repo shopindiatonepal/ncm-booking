@@ -63,6 +63,11 @@ async function ncm(method, p, body) {
 
 // NCM wraps lists in different shapes ([...], {data:[...]}, {data:{branches:[...]}}, {"1":{...}}); find the list wherever it is.
 function toList(d, depth = 0) {
+  // NCM sometimes sends the data as a JSON string inside the JSON, so unpack it first
+  if (typeof d === 'string') {
+    const t = d.trim();
+    if (t[0] === '[' || t[0] === '{') { try { d = JSON.parse(t); } catch { return []; } } else return [];
+  }
   if (Array.isArray(d)) return d;
   if (!d || typeof d !== 'object' || depth > 3) return [];
   for (const k of ['data', 'results', 'result', 'branches', 'branchlist', 'items', 'orders']) {
@@ -78,10 +83,19 @@ function toList(d, depth = 0) {
 let branchCache = null; // [{name, raw}]
 async function getBranchObjs() {
   if (branchCache) return branchCache;
-  if (TEST_MODE) return ['KATHMANDU', 'TINKUNE', 'POKHARA', 'BIRATNAGAR', 'BUTWAL', 'CHITWAN'].map((name) => ({ name, raw: {} }));
+  if (TEST_MODE) return ['KATHMANDU', 'TINKUNE', 'POKHARA', 'BIRATNAGAR', 'BUTWAL', 'CHITWAN'].map((name) => ({ name, raw: {}, areas: [], district: '', phone: '' }));
   const d = await ncm('GET', '/api/v1/branchlist');
-  const nameOf = (b) => typeof b === 'string' ? b : Array.isArray(b) ? b.find((x) => typeof x === 'string') : b && (b.name || b.branch_name || b.branch || b.Name);
-  const list = toList(d).map((b) => ({ name: nameOf(b), raw: b && typeof b === 'object' && !Array.isArray(b) ? b : {} })).filter((b) => b.name);
+  // Real NCM row layout: [name, code, covered areas (comma separated), municipality, district, province, phone, phone2, address]
+  const parse = (b) => {
+    if (typeof b === 'string') return { name: b, areas: [], district: '', phone: '', raw: {} };
+    if (Array.isArray(b)) {
+      return { name: b[0] ? String(b[0]).trim() : '', raw: {}, district: b[4] || '', phone: b[6] || '',
+        areas: String(b[2] || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean) };
+    }
+    const raw = b || {};
+    return { name: raw.name || raw.branch_name || raw.branch || raw.Name, raw, areas: areasOf(raw), district: raw.district || '', phone: raw.phone || '' };
+  };
+  const list = toList(d).map(parse).filter((b) => b.name);
   if (!list.length) throw new Error('Could not read the branch list. NCM sent: ' + JSON.stringify(d).slice(0, 250));
   branchCache = list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return branchCache;
@@ -151,7 +165,7 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/branch') {
         const b = (await getBranchObjs()).find((x) => x.name === url.searchParams.get('name'));
         if (!b) return send(res, 404, { error: 'Unknown branch' });
-        return send(res, 200, { name: b.name, areas: areasOf(b.raw), district: b.raw.district || '', phone: b.raw.phone || '' });
+        return send(res, 200, { name: b.name, areas: b.areas, district: b.district, phone: b.phone });
       }
 
       if (url.pathname === '/api/rate') {
