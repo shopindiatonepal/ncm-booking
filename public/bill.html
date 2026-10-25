@@ -38,10 +38,11 @@
 </head>
 <body>
 <div class="bar">
-  <button onclick="window.print()">Print / Save PDF</button>
+  <button onclick="printBill()">Print / Save PDF</button>
   <button class="alt" onclick="newBill()">New bill</button>
+  <span style="display:flex;gap:6px"><input id="nextNo" placeholder="Next bill no." style="width:130px;padding:8px;border:1px solid #cbd0d8;border-radius:8px;background:#fff"><button class="alt" onclick="setNext()">Set</button></span>
 </div>
-<div class="tip">Every field is editable. Business details and bill number are remembered on this device.</div>
+<div class="tip">Every field is editable. Bill numbers continue from the last printed bill. Used a number in another store? Type the next one in the box above and tap Set, or just edit "Bill no" on the bill. Letters work too (A-241 becomes A-242).</div>
 
 <div class="sheet">
   <div class="head">
@@ -130,8 +131,8 @@ function setParticulars(p) { $('part').value = p ? `Handling fee for ${p}` : 'Ha
 
 function init() {
   document.querySelectorAll('[data-keep]').forEach((el) => { el.value = localStorage.getItem('bill_' + el.id) || ''; el.addEventListener('input', () => localStorage.setItem('bill_' + el.id, el.value)); });
-  const n = (Number(localStorage.getItem('bill_lastNo')) || 0) + 1;
-  $('billNo').value = n;
+  const forced = localStorage.getItem('bill_next'), last = localStorage.getItem('bill_lastNo');
+  $('billNo').value = forced || (last ? incr(last) : '1');
   $('date').value = todayBS();
   $('cName').value = P.get('name') || '';
   $('cAddr').value = P.get('address') || '';
@@ -139,9 +140,21 @@ function init() {
   calc();
 }
 // remember the bill number when printing so the next bill continues the series
-window.addEventListener('beforeprint', () => { const n = Number($('billNo').value); if (n) localStorage.setItem('bill_lastNo', n); });
+function saveBill() { const n = $('billNo').value.trim(); if (n) { localStorage.setItem('bill_lastNo', n); localStorage.removeItem('bill_next'); } }
+window.addEventListener('beforeprint', saveBill);
+function printBill() { saveBill(); window.print(); }
+function setNext() {
+  const v = $('nextNo').value.trim(); if (!v) return;
+  localStorage.setItem('bill_next', v); $('billNo').value = v; $('nextNo').value = '';
+}
+// add 1 to the last number in the text, keeping zeros and letters: 099 -> 100, A-241 -> A-242
+function incr(s) {
+  const m = /^(.*?)(\d+)(\D*)$/.exec(s);
+  if (!m) return s + '1';
+  const n = String(Number(m[2]) + 1).padStart(m[2].length, '0');
+  return m[1] + n + m[3];
+}
 function newBill() {
-  const n = Number($('billNo').value); if (n) localStorage.setItem('bill_lastNo', n);
   history.replaceState(null, '', '/bill');
   P.delete('name'); P.delete('address'); P.delete('product');
   $('disc').value = ''; $('qty').value = 1; $('rate').value = 100; init();
