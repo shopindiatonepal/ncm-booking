@@ -10,6 +10,8 @@ const PORT = process.env.PORT || 3000;
 const NCM_TOKEN = (process.env.NCM_TOKEN || '').trim().replace(/^["']+|["']+$/g, '').replace(/^Token\s+/i, '').trim();
 const NCM_BASE = (process.env.NCM_BASE_URL || 'https://portal.nepalcanmove.com').replace(/\/$/, '');
 const VREF_ID = process.env.VREF_ID || '31180'; // fixed, partner cannot change it
+// Optional: NCM's public tracking page, with {id} where the tracking ID goes. If empty, the tracking link opens this site's own tracking view.
+const TRACK_URL = (process.env.TRACK_URL || '').trim();
 const PASSCODE = process.env.PASSCODE || 'change-me';
 const SECRET = crypto.createHash('sha256').update(PASSCODE + NCM_TOKEN + 'ncm').digest('hex');
 const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
@@ -126,6 +128,27 @@ async function statusOf(order) {
   } catch {}
   return order.status;
 }
+// find the first non-empty value whose key matches re, anywhere in a nested response
+function findKey(obj, re, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 4) return '';
+  for (const [k, v] of Object.entries(obj)) {
+    if (re.test(k) && (typeof v === 'string' || typeof v === 'number') && String(v).trim()) return String(v).trim();
+  }
+  for (const v of Object.values(obj)) { const r = findKey(v, re, depth + 1); if (r) return r; }
+  return '';
+}
+// NCM's order-detail reply isn't documented publicly, so look for the tracking ID under any "track..." key.
+async function fetchTrackId(ncmId) {
+  try { return findKey(await ncm('GET', '/api/v1/order?id=' + encodeURIComponent(ncmId)), /track/i); } catch { return ''; }
+}
+function makeBill(b, o) {
+  if (!b || b.on === false) return null;
+  const qty = Math.max(1, Number(b.qty) || 1), rate = Math.max(0, Number(b.rate) || 0), discount = Math.max(0, Number(b.discount) || 0);
+  const total = qty * rate;
+  return { no: clean(b.no, 40), date: clean(b.date, 20), particulars: clean(b.particulars, 200) || ('Handling fee for ' + o.packageType),
+    qty, rate, discount, total, grand: Math.max(0, total - discount) };
+}
+const cleanWeight = (v) => Math.min(1000, Math.max(0, Math.round((Number(v) || 0) * 100) / 100));
 const FINAL = /deliver|return/i;
 const kind = (s = '') => (/return/i.test(s) ? 'returned' : /delivered/i.test(s) ? 'delivered' : 'other');
 
@@ -160,7 +183,7 @@ http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       if (!isAuthed(req)) return send(res, 401, { error: 'login' });
 
-      if (url.pathname === '/api/config') return send(res, 200, { vref: VREF_ID, testMode: TEST_MODE, deliveryTypes: DELIVERY_TYPES, priorities: PRIORITIES });
+      if (url.pathname === '/api/config') return send(res, 200, { vref: VREF_ID, testMode: TEST_MODE, deliveryTypes: DELIVERY_TYPES, priorities: PRIORITIES, trackUrl: TRACK_URL });
       if (url.pathname === '/api/branches') return send(res, 200, { branches: await getBranches() });
       if (url.pathname === '/api/branchdata') return send(res, 200, { branches: (await getBranchObjs()).map((b) => ({ name: b.name, district: b.district || '', areas: b.areas || [] })) });
 
@@ -205,7 +228,7 @@ http.createServer(async (req, res) => {
           deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60),
           name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
           packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)),
-          description: clean(b.description, 300), priority: clean(b.priority, 10),
+          description: clean(b.description, 300), priority: clean(b.priority, 10), weight: cleanWeight(b.weight),
         };
         const err =
           !DELIVERY_TYPES.includes(o.deliveryType) ? 'Choose a delivery type' :
@@ -213,7 +236,8 @@ http.createServer(async (req, res) => {
           !o.name || !o.address ? 'Customer name and address are required' :
           o.phone.length < 10 ? 'Enter a valid 10-digit phone number' :
           !o.packageType ? 'Enter the package type' :
-          !PRIORITIES.includes(o.priority) ? 'Choose a priority' : '';
+          !PRIORITIES.includes(o.priority) ? 'Choose a priority' :
+          b.bill && b.bill.on && !clean(b.bill.no, 40) ? 'Enter a bill number, or switch the bill off' : '';
         if (err) return send(res, 400, { error: err });
 
         // NCM has no priority field, so priority + description go into the instruction text
@@ -223,24 +247,34 @@ http.createServer(async (req, res) => {
           fbranch: o.from, branch: o.to, package: o.packageType, vref_id: VREF_ID,
           instruction, delivery_type: o.deliveryType,
         };
-        let ncmId = null, status = 'Created';
+        if (o.weight > 0) payload.weight = String(o.weight);
+        let ncmId = null, status = 'Created', trackId = '';
         if (TEST_MODE) { ncmId = 'TEST-' + Date.now().toString().slice(-6); status = 'Test order (not sent to NCM)'; }
         else {
           const r = await ncm('POST', '/api/v1/order/create', payload);
-          ncmId = r.orderid ?? r.order_id ?? r.id ?? (r.data && (r.data.orderid ?? r.data.id)) ?? null;
+          ncmId = r.orderid ?? r.order_id ?? r.id ?? (r.data && (r.data.orderid ?? r.data.id)) ?? (findKey(r, /^order_?id$/i) || null);
           status = 'Pickup Order Created';
+          trackId = findKey(r, /track/i);
+          if (!trackId && ncmId) trackId = await fetchTrackId(ncmId);
         }
         const all = await loadOrders();
-        const rec = { ...o, ncmId, status, createdAt: new Date().toISOString() };
+        const rec = { ...o, ncmId, trackId, status, createdAt: new Date().toISOString() };
+        const bill = makeBill(b.bill, o);
+        if (bill) rec.bill = bill;
         all.push(rec); await saveOrders(all);
         return send(res, 200, { ok: true, order: rec });
+      }
+
+      if (url.pathname === '/api/order' && req.method === 'GET') {
+        const o = (await loadOrders()).find((x) => String(x.ncmId) === clean(url.searchParams.get('id'), 40));
+        return o ? send(res, 200, { order: o }) : send(res, 404, { error: 'Order not found' });
       }
 
       // ---- order list + tracking ----
       if (url.pathname === '/api/orders' && req.method === 'GET') {
         const q = clean(url.searchParams.get('q'), 60).toLowerCase();
         let list = (await loadOrders()).slice().reverse();
-        if (q) list = list.filter((o) => [o.name, o.phone, o.phone2, o.ncmId, o.to, o.status].join(' ').toLowerCase().includes(q));
+        if (q) list = list.filter((o) => [o.name, o.phone, o.phone2, o.ncmId, o.trackId, o.bill && o.bill.no, o.to, o.status].join(' ').toLowerCase().includes(q));
         return send(res, 200, { orders: list.slice(0, 100), total: list.length });
       }
 
@@ -257,7 +291,10 @@ http.createServer(async (req, res) => {
         const comments = cm.status === 'fulfilled' ? arr(cm.value).map((x) => typeof x === 'string' ? { text: x } : { text: pick(x, 'comments', 'comment', 'text'), by: pick(x, 'addedBy', 'added_by', 'user'), time: pick(x, 'added_time', 'addedTime', 'time', 'date') }) : [];
         if (!history.length && st.status === 'rejected') return send(res, 502, { error: 'Courier tracking unavailable: ' + st.reason.message });
         const latest = history.length ? history[history.length - 1].status : order.status;
-        if (latest && latest !== order.status) { order.status = latest; await saveOrders(all); }
+        let dirty = false;
+        if (latest && latest !== order.status) { order.status = latest; dirty = true; }
+        if (!order.trackId && !order.trackTried) { order.trackId = await fetchTrackId(id); order.trackTried = true; dirty = true; }
+        if (dirty) await saveOrders(all);
         return send(res, 200, { order, history, comments });
       }
 
@@ -275,7 +312,7 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/api/order/update') {
           const next = { deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60), priority: clean(b.priority, 10),
             name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
-            packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)), description: clean(b.description, 300) };
+            packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)), description: clean(b.description, 300), weight: cleanWeight(b.weight) };
           if (!DELIVERY_TYPES.includes(next.deliveryType) || !PRIORITIES.includes(next.priority)) return send(res, 400, { error: 'Choose a valid delivery type and priority' });
           if (!next.from || !next.to) return send(res, 400, { error: 'Origin and destination are required' });
           if (!next.name || !next.address || next.phone.length < 10 || !next.packageType) return send(res, 400, { error: 'Name, address, a 10-digit phone and package type are required' });
@@ -294,6 +331,13 @@ http.createServer(async (req, res) => {
           if (!live) return send(res, 200, { ok: true, note: 'Test order: message not sent to NCM' });
           await comment(text);
           return send(res, 200, { ok: true });
+        }
+        if (url.pathname === '/api/order/bill') {
+          if (b.remove) { delete o.bill; await saveOrders(all); return send(res, 200, { ok: true }); }
+          if (!b.bill || !clean(b.bill.no, 40)) return send(res, 400, { error: 'Enter a bill number' });
+          o.bill = makeBill({ ...b.bill, on: true }, o);
+          await saveOrders(all);
+          return send(res, 200, { ok: true, bill: o.bill });
         }
         if (url.pathname === '/api/order/delete') {
           await saveOrders(all.filter((x) => x !== o));
