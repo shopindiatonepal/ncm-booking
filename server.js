@@ -6,7 +6,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const NCM_TOKEN = process.env.NCM_TOKEN || '';
+// tolerate a pasted key with spaces, quotes or the word "Token" in front
+const NCM_TOKEN = (process.env.NCM_TOKEN || '').trim().replace(/^["']+|["']+$/g, '').replace(/^Token\s+/i, '').trim();
 const NCM_BASE = (process.env.NCM_BASE_URL || 'https://portal.nepalcanmove.com').replace(/\/$/, '');
 const VREF_ID = process.env.VREF_ID || '31180'; // fixed, partner cannot change it
 const PASSCODE = process.env.PASSCODE || 'change-me';
@@ -161,6 +162,7 @@ http.createServer(async (req, res) => {
 
       if (url.pathname === '/api/config') return send(res, 200, { vref: VREF_ID, testMode: TEST_MODE, deliveryTypes: DELIVERY_TYPES, priorities: PRIORITIES });
       if (url.pathname === '/api/branches') return send(res, 200, { branches: await getBranches() });
+      if (url.pathname === '/api/branchdata') return send(res, 200, { branches: (await getBranchObjs()).map((b) => ({ name: b.name, district: b.district || '', areas: b.areas || [] })) });
 
       if (url.pathname === '/api/branch') {
         const b = (await getBranchObjs()).find((x) => x.name === url.searchParams.get('name'));
@@ -283,6 +285,9 @@ http.createServer(async (req, res) => {
   } catch (e) {
     console.error(e.status || '', e.message, JSON.stringify(e.data || ''));
     const msg = e.data ? (typeof e.data === 'string' ? e.data : JSON.stringify(e.data)) : e.message;
+    if (e.status === 401 || e.status === 403) {
+      return send(res, 400, { error: 'NCM rejected the API key (' + msg.slice(0, 80) + '). Check NCM_TOKEN on Render: paste only the key, and make sure it belongs to the same system as NCM_BASE_URL (a live-portal key needs https://portal.nepalcanmove.com, a sandbox key needs the sandbox address).' });
+    }
     send(res, e.status && e.status < 500 ? 400 : 502, { error: (e.status ? 'Courier said: ' : 'Problem: ') + msg.slice(0, 300) });
   }
 }).listen(PORT, () => console.log(`Running on :${PORT}  ${TEST_MODE ? '(TEST MODE: no NCM_TOKEN set)' : '(live: ' + NCM_BASE + ')'}`));
