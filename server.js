@@ -273,8 +273,11 @@ http.createServer(async (req, res) => {
         const comment = (text) => ncm('POST', '/api/v1/order/comment', { orderid: Number(o.ncmId) || o.ncmId, comments: String(text).slice(0, 500) });
 
         if (url.pathname === '/api/order/update') {
-          const next = { name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
+          const next = { deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60), priority: clean(b.priority, 10),
+            name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
             packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)), description: clean(b.description, 300) };
+          if (!DELIVERY_TYPES.includes(next.deliveryType) || !PRIORITIES.includes(next.priority)) return send(res, 400, { error: 'Choose a valid delivery type and priority' });
+          if (!next.from || !next.to) return send(res, 400, { error: 'Origin and destination are required' });
           if (!next.name || !next.address || next.phone.length < 10 || !next.packageType) return send(res, 400, { error: 'Name, address, a 10-digit phone and package type are required' });
           const changes = Object.keys(next).filter((k) => String(o[k] ?? '') !== String(next[k]));
           Object.assign(o, next, { editedAt: new Date().toISOString() });
