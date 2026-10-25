@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book Delivery</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1b1f24; --mut:#6b7280; --line:#e2e5ea; --acc:#0b6bcb; --ok:#14804a; --bad:#c0392b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; }
+  header a { color:var(--acc); text-decoration:none; font-size:14px; margin-left:12px; }
+  main { max-width:620px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 12px; }
+  label { display:block; font-size:14px; color:var(--mut); margin:12px 0 4px; }
+  label:first-of-type { margin-top:0; }
+  input, select, textarea { width:100%; font:inherit; padding:11px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--acc); border-color:transparent; }
+  textarea { min-height:70px; resize:vertical; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .seg label, .pri label { margin:0; color:var(--ink); }
+  .seg input, .pri input { position:absolute; opacity:0; width:0; }
+  .seg span, .pri span { display:block; text-align:center; padding:11px 8px; border:1px solid var(--line); border-radius:8px; cursor:pointer; font-size:15px; }
+  .seg input:checked + span { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .pri { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .pri input:checked + span { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .pri input[value=Urgent]:checked + span { background:var(--bad); border-color:var(--bad); }
+  button.main { width:100%; padding:14px; font:inherit; font-weight:600; background:var(--acc); color:#fff; border:0; border-radius:10px; cursor:pointer; }
+  button.main:disabled { opacity:.6; }
+  .fixed { background:#f0f2f5; color:var(--mut); }
+  .hist { margin-top:10px; font-size:14px; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .chip { padding:3px 10px; border-radius:999px; font-size:13px; background:#eef0f3; }
+  .chip.d { background:#e3f4ea; color:var(--ok); } .chip.r { background:#fbe9e7; color:var(--bad); }
+  .hist ul { margin:6px 0 0; padding:0; list-style:none; max-height:150px; overflow:auto; }
+  .hist li { padding:6px 0; border-top:1px solid var(--line); color:var(--mut); }
+  .banner { background:#fff6e0; border:1px solid #f0d58a; color:#7a5b00; padding:10px 12px; border-radius:8px; font-size:14px; margin-bottom:14px; }
+  .msg { padding:12px; border-radius:8px; margin-bottom:14px; font-size:15px; }
+  .msg.ok { background:#e3f4ea; color:var(--ok); } .msg.err { background:#fbe9e7; color:var(--bad); }
+  #login { max-width:340px; margin:18vh auto; }
+  .hide { display:none; }
+  a.bill { display:inline-block; margin-top:6px; color:var(--acc); }
+  header a.on { font-weight:700; text-decoration:underline; }
+  .ord { cursor:pointer; }
+  .ord .top { display:flex; justify-content:space-between; gap:8px; font-weight:600; }
+  .ord .sub { color:var(--mut); font-size:14px; margin-top:2px; }
+  .st { display:inline-block; margin-top:6px; padding:2px 10px; border-radius:999px; font-size:13px; background:#eef0f3; }
+  .st.d { background:#e3f4ea; color:var(--ok); } .st.r { background:#fbe9e7; color:var(--bad); }
+  .tl { margin:12px 0 0; padding:0 0 0 14px; border-left:2px solid var(--line); list-style:none; font-size:14px; }
+  .tl li { position:relative; padding:0 0 10px 10px; }
+  .tl li::before { content:''; position:absolute; left:-20px; top:5px; width:10px; height:10px; border-radius:50%; background:var(--acc); }
+  .tl small { color:var(--mut); display:block; }
+  .info { margin-top:12px; padding:10px 12px; border-radius:8px; background:#eef5fd; font-size:14px; }
+  .info b.big { font-size:18px; }
+  .info details summary { cursor:pointer; color:var(--acc); }
+  .areas { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:160px; overflow:auto; }
+  .areas span { background:#fff; border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="login" class="card hide">
+  <h2>Enter passcode</h2>
+  <input id="pass" type="password" placeholder="Passcode" autocomplete="current-password">
+  <div id="lerr" class="msg err hide" style="margin:10px 0 0"></div>
+  <button class="main" style="margin-top:12px" onclick="login()">Open</button>
+</div>
+
+<div id="app" class="hide">
+<header><h1 id="title">Book Delivery</h1><span><a href="#" id="tabBook" onclick="show('book');return false">Book</a><a href="#" id="tabOrders" onclick="show('orders');return false">Orders</a><a href="/bill" target="_blank">Bill</a><a href="#" onclick="logout()">Logout</a></span></header>
+<main id="ordersView" class="hide">
+  <div class="card">
+    <input id="q" placeholder="Search name, phone, order ID, status">
+    <button class="main" style="margin-top:10px" id="refreshBtn" onclick="refreshAll()">Refresh status from courier</button>
+  </div>
+  <div id="olist"></div>
+</main>
+<main id="bookView">
+  <div id="test" class="banner hide">Test mode: no courier API key is set yet, so orders are saved here only and are NOT sent to the courier.</div>
+  <div id="result"></div>
+  <form id="f" autocomplete="off">
+    <div class="card">
+      <h2>Delivery</h2>
+      <label>Delivery type</label>
+      <div class="seg" id="dtypes"></div>
+      <div class="row">
+        <div><label>Origin branch</label><select id="from" required></select></div>
+        <div><label>Delivery destination</label><select id="to" required></select></div>
+      </div>
+      <div id="rate" class="info hide"></div>
+      <div id="areas" class="info hide"></div>
+      <label>Vendor reference ID</label>
+      <input id="vref" class="fixed" readonly>
+      <label>Priority</label>
+      <div class="pri" id="pris"></div>
+    </div>
+
+    <div class="card">
+      <h2>Customer</h2>
+      <label>Phone number</label>
+      <input id="phone" type="tel" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" required>
+      <div id="hist" class="hist"></div>
+      <label>Alternate phone (optional)</label>
+      <input id="phone2" type="tel" inputmode="numeric" maxlength="14">
+      <label>Customer name</label>
+      <input id="name" required>
+      <label>Customer address</label>
+      <input id="address" required>
+    </div>
+
+    <div class="card">
+      <h2>Package</h2>
+      <div class="row">
+        <div><label>Package type</label><input id="packageType" placeholder="e.g. Watch" required></div>
+        <div><label>COD amount (Rs)</label><input id="cod" type="number" inputmode="numeric" min="0" value="0"></div>
+      </div>
+      <label>Description</label>
+      <textarea id="description" placeholder="Any note for the courier"></textarea>
+    </div>
+    <button class="main" id="go">Create order</button>
+  </form>
+</main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LABELS = { Door2Door: 'Door to Door', Door2Branch: 'Door to Branch', Branch2Door: 'Branch to Door', Branch2Branch: 'Branch to Branch' };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function api(path, opts) {
+  const r = await fetch(path, opts && { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts) });
+  if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('login'); }
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || 'Something went wrong');
+  return d;
+}
+function showLogin() { $('app').classList.add('hide'); $('login').classList.remove('hide'); }
+async function login() {
+  try { await api('/api/login', { passcode: $('pass').value }); $('lerr').classList.add('hide'); start(); }
+  catch (e) { $('lerr').textContent = e.message; $('lerr').classList.remove('hide'); }
+}
+$('pass').addEventListener('keydown', (e) => e.key === 'Enter' && login());
+async function logout() { await fetch('/api/logout'); location.reload(); }
+
+async function start() {
+  try {
+    const cfg = await api('/api/config');
+    const { branches } = await api('/api/branches');
+    $('login').classList.add('hide'); $('app').classList.remove('hide'); show('book');
+    $('test').classList.toggle('hide', !cfg.testMode);
+    $('vref').value = cfg.vref;
+    $('dtypes').innerHTML = cfg.deliveryTypes.map((t, i) => `<label><input type="radio" name="dt" value="${t}" ${i === 0 ? 'checked' : ''}><span>${LABELS[t]}</span></label>`).join('');
+    $('pris').innerHTML = cfg.priorities.map((p, i) => `<label><input type="radio" name="pr" value="${p}" ${i === 0 ? 'checked' : ''}><span>${p}</span></label>`).join('');
+    const opts = '<option value="">Select branch</option>' + branches.map((b) => `<option>${esc(b)}</option>`).join('');
+    $('from').innerHTML = opts; $('to').innerHTML = opts;
+    const last = localStorage.getItem('lastFrom'); if (last) $('from').value = last;
+  } catch (e) { if (e.message === 'login') return; alert(e.message); }
+}
+
+// ---- delivery charge + destination coverage ----
+const dtype = () => document.querySelector('input[name=dt]:checked').value;
+let rateSeq = 0;
+async function updateRate() {
+  const from = $('from').value, to = $('to').value, box = $('rate'), seq = ++rateSeq;
+  if (!from || !to) { box.classList.add('hide'); return; }
+  box.classList.remove('hide'); box.textContent = 'Getting delivery charge…';
+  try {
+    const r = await api(`/api/rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&type=${dtype()}`);
+    if (seq !== rateSeq) return;
+    box.innerHTML = r.charge == null
+      ? esc(r.note || 'Delivery charge not available for this route')
+      : `Delivery charge ${esc(from)} → ${esc(to)} (${LABELS[dtype()]}): <b class="big">Rs ${esc(r.charge)}</b>`;
+  } catch (e) { if (seq === rateSeq) box.textContent = 'Could not get delivery charge: ' + e.message; }
+}
+async function updateAreas() {
+  const to = $('to').value, box = $('areas');
+  if (!to) { box.classList.add('hide'); return; }
+  try {
+    const b = await api('/api/branch?name=' + encodeURIComponent(to));
+    if ($('to').value !== to) return;
+    box.classList.remove('hide');
+    box.innerHTML = b.areas.length
+      ? `<details open><summary>${esc(to)} delivers to ${b.areas.length} areas</summary><div class="areas">${b.areas.map((a) => `<span>${esc(a)}</span>`).join('')}</div></details>`
+      : `Covered areas for ${esc(to)} aren't available.`;
+  } catch (e) { box.classList.add('hide'); }
+}
+$('from').addEventListener('change', updateRate);
+$('to').addEventListener('change', () => { updateRate(); updateAreas(); });
+$('dtypes').addEventListener('change', updateRate);
+
+// ---- orders + tracking ----
+function show(v) {
+  $('bookView').classList.toggle('hide', v !== 'book'); $('ordersView').classList.toggle('hide', v !== 'orders');
+  $('tabBook').classList.toggle('on', v === 'book'); $('tabOrders').classList.toggle('on', v === 'orders');
+  $('title').textContent = v === 'book' ? 'Book Delivery' : 'Orders';
+  if (v === 'orders') loadOrders();
+}
+const stClass = (s = '') => (/return/i.test(s) ? 'r' : /delivered/i.test(s) ? 'd' : '');
+async function loadOrders() {
+  try {
+    const { orders, total } = await api('/api/orders?q=' + encodeURIComponent($('q').value));
+    $('olist').innerHTML = orders.length ? orders.map((o) => `<div class="card ord" data-id="${esc(o.ncmId)}">
+      <div class="top"><span>${esc(o.name)}</span><span>#${esc(o.ncmId ?? '-')}</span></div>
+      <div class="sub">${esc(o.phone)} · ${esc(o.from)} → ${esc(o.to)} · COD Rs ${o.cod}</div>
+      <div class="sub">${new Date(o.createdAt).toLocaleString()} · ${esc(o.packageType)}</div>
+      <span class="st ${stClass(o.status)}">${esc(o.status)}</span><div class="detail"></div></div>`).join('') : '<div class="card">No orders yet.</div>';
+  } catch (e) { if (e.message !== 'login') $('olist').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+}
+let qTimer; $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadOrders, 300); });
+async function refreshAll() {
+  const b = $('refreshBtn'); b.disabled = true; b.textContent = 'Checking courier…';
+  try { await api('/api/refresh', {}); await loadOrders(); } catch (e) { alert(e.message); }
+  b.disabled = false; b.textContent = 'Refresh status from courier';
+}
+$('olist').addEventListener('click', async (e) => {
+  const card = e.target.closest('.ord'); if (!card) return;
+  const box = card.querySelector('.detail');
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  box.textContent = 'Loading tracking…';
+  try {
+    const t = await api('/api/track?id=' + encodeURIComponent(card.dataset.id));
+    const fmt = (s) => (s && !isNaN(new Date(s)) ? new Date(s).toLocaleString() : esc(s || ''));
+    box.innerHTML = `<ul class="tl">${t.history.map((h) => `<li>${esc(h.status)}<small>${fmt(h.time)}</small></li>`).join('') || '<li>No updates yet</li>'}</ul>` +
+      (t.comments.length ? `<div class="sub" style="margin-top:6px"><b>Courier comments</b></div><ul class="tl">${t.comments.map((c) => `<li>${esc(c.text)}<small>${esc(c.by || '')} ${fmt(c.time)}</small></li>`).join('')}</ul>` : '') +
+      `<div class="sub" style="margin-top:6px">Address: ${esc(t.order.address)}</div>`;
+    const pill = card.querySelector('.st'); pill.textContent = t.order.status; pill.className = 'st ' + stClass(t.order.status);
+  } catch (err) { box.innerHTML = `<div class="msg err" style="margin:8px 0 0">${esc(err.message)}</div>`; }
+});
+
+let timer;
+$('phone').addEventListener('input', () => {
+  clearTimeout(timer);
+  const p = $('phone').value.replace(/\D/g, '');
+  if (p.length < 10) { $('hist').innerHTML = ''; return; }
+  timer = setTimeout(async () => {
+    $('hist').textContent = 'Checking history…';
+    try {
+      const h = await api('/api/history?phone=' + p);
+      if (!h.orders.length) { $('hist').innerHTML = '<span class="chip">New customer</span>'; return; }
+      if (!$('name').value && h.lastName) $('name').value = h.lastName;
+      if (!$('address').value && h.lastAddress) $('address').value = h.lastAddress;
+      $('hist').innerHTML = `<div class="chips"><span class="chip d">${h.delivered} delivered</span><span class="chip r">${h.returned} returned</span><span class="chip">${h.other} in progress</span></div>
+        <ul>${h.orders.map((o) => `<li>${new Date(o.createdAt).toLocaleDateString()} · ${esc(o.packageType)} · Rs ${o.cod} · ${esc(o.status)}</li>`).join('')}</ul>`;
+    } catch (e) { $('hist').textContent = ''; }
+  }, 400);
+});
+
+$('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('go'); btn.disabled = true; btn.textContent = 'Creating…';
+  const body = {
+    deliveryType: document.querySelector('input[name=dt]:checked').value, from: $('from').value, to: $('to').value,
+    phone: $('phone').value, phone2: $('phone2').value, name: $('name').value, address: $('address').value,
+    packageType: $('packageType').value, cod: $('cod').value, description: $('description').value,
+    priority: document.querySelector('input[name=pr]:checked').value,
+  };
+  try {
+    const { order } = await api('/api/orders', body);
+    localStorage.setItem('lastFrom', body.from);
+    const q = new URLSearchParams({ name: order.name, address: order.address, product: order.packageType });
+    $('result').innerHTML = `<div class="msg ok">Order created. ID: <b>${esc(order.ncmId ?? 'n/a')}</b><br><a class="bill" href="/bill?${q}" target="_blank">Make bill for this order →</a></div>`;
+    ['phone', 'phone2', 'name', 'address', 'packageType', 'description'].forEach((i) => ($(i).value = ''));
+    $('cod').value = 0; $('hist').innerHTML = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    $('result').innerHTML = `<div class="msg err">${esc(err.message)}</div>`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  btn.disabled = false; btn.textContent = 'Create order';
+});
+
+fetch('/api/config').then((r) => (r.ok ? start() : showLogin()));
+</script>
+</body>
+</html>

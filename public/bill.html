@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bill</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#eceff3; font:15px/1.35 Georgia,'Times New Roman',serif; color:#111; }
+  .bar { display:flex; gap:8px; padding:10px; justify-content:center; flex-wrap:wrap; font-family:system-ui,sans-serif; }
+  .bar button { padding:10px 16px; border:0; border-radius:8px; background:#0b6bcb; color:#fff; font:600 14px system-ui; }
+  .bar button.alt { background:#fff; color:#111; border:1px solid #cbd0d8; }
+  .tip { text-align:center; font:13px system-ui; color:#667; padding:0 12px 8px; }
+  .sheet { background:#fff; width:100%; max-width:560px; margin:0 auto 24px; padding:18px; border:1px solid #cfd4dc; }
+  input, textarea { font:inherit; border:0; border-bottom:1px dotted #555; background:transparent; width:100%; padding:2px 0; color:#111; }
+  input:focus, textarea:focus { outline:none; background:#fffbe0; }
+  .head { text-align:center; margin-bottom:10px; }
+  .head input { text-align:center; }
+  #sName { font-size:22px; font-weight:bold; }
+  .line { display:flex; gap:8px; align-items:baseline; margin:7px 0; }
+  .line b { white-space:nowrap; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th, td { border:1px solid #333; padding:4px 6px; vertical-align:top; }
+  th { text-align:center; font-size:13px; }
+  td input { border:0; }
+  td.n, td input.n { text-align:right; }
+  .grow td { height:230px; }
+  .tot td { border:1px solid #333; }
+  .words { border:1px solid #333; border-top:0; padding:6px; min-height:60px; }
+  .sig { margin-top:26px; display:flex; justify-content:flex-end; gap:8px; align-items:baseline; }
+  .sig input { width:50%; }
+  @media print {
+    body { background:#fff; } .bar, .tip { display:none; }
+    .sheet { border:0; max-width:none; margin:0; padding:0; }
+    input, textarea { border-bottom:0 !important; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button onclick="window.print()">Print / Save PDF</button>
+  <button class="alt" onclick="newBill()">New bill</button>
+</div>
+<div class="tip">Every field is editable. Business details and bill number are remembered on this device.</div>
+
+<div class="sheet">
+  <div class="head">
+    <input id="sName" placeholder="Business name" data-keep>
+    <input id="sAddr" placeholder="Address" data-keep>
+    <input id="sPhone" placeholder="Phone" data-keep>
+  </div>
+  <div class="line" style="justify-content:space-between">
+    <span class="line" style="flex:1"><b>Bill no:</b><input id="billNo" inputmode="numeric"></span>
+    <span class="line" style="flex:1"><b>Date (BS):</b><input id="date" placeholder="2083/07/08"></span>
+  </div>
+  <div class="line"><b>PAN no:</b><input id="pan" placeholder="PAN number" inputmode="numeric" data-keep></div>
+  <div class="line"><b>Name:</b><input id="cName"></div>
+  <div class="line"><b>Address:</b><input id="cAddr"></div>
+
+  <table>
+    <thead><tr><th style="width:9%">S.No.</th><th>Particulars</th><th style="width:10%">Qty</th><th style="width:15%">Rate</th><th style="width:18%">Amount</th></tr></thead>
+    <tbody>
+      <tr class="grow">
+        <td style="text-align:center">1</td>
+        <td><textarea id="part" rows="3" style="border:0;resize:none;width:100%"></textarea></td>
+        <td><input id="qty" class="n" inputmode="numeric" value="1"></td>
+        <td><input id="rate" class="n" inputmode="numeric" value="100"></td>
+        <td><input id="amt" class="n" readonly></td>
+      </tr>
+    </tbody>
+  </table>
+  <table style="margin-top:0">
+    <tr class="tot">
+      <td rowspan="3" style="width:63%;vertical-align:top"><b>In words:</b><div id="words" style="min-height:50px;margin-top:4px"></div></td>
+      <td style="width:19%;text-align:right"><b>Total</b></td><td style="width:18%"><input id="total" class="n" readonly></td>
+    </tr>
+    <tr class="tot"><td style="text-align:right"><b>Discount</b></td><td><input id="disc" class="n" inputmode="numeric"></td></tr>
+    <tr class="tot"><td style="text-align:right"><b>Grand Total</b></td><td><input id="grand" class="n" readonly></td></tr>
+  </table>
+  <div class="sig"><b>Signature:</b><input id="sig" placeholder="(sign after printing)"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const P = new URLSearchParams(location.search);
+
+// --- AD -> BS. Table covers BS 2083 (14 Apr 2026 – 13 Apr 2027) only; outside that, type the date yourself.
+const BS2083 = [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 31];
+function todayBS() {
+  const start = Date.UTC(2026, 3, 14), now = new Date();
+  let days = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 864e5);
+  if (days < 0) return '';
+  let m = 0;
+  while (m < 12 && days >= BS2083[m]) { days -= BS2083[m]; m++; }
+  if (m >= 12) return '';
+  return `2083/${String(m + 1).padStart(2, '0')}/${String(days + 1).padStart(2, '0')}`;
+}
+
+// --- amount in words (Rupees)
+const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+const below100 = (n) => (n < 20 ? ones[n] : tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : ''));
+const below1000 = (n) => (n >= 100 ? ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + below100(n % 100) : '') : below100(n));
+function words(n) {
+  n = Math.floor(n);
+  if (!n) return '';
+  const parts = [];
+  const cr = Math.floor(n / 1e7); n %= 1e7;
+  const lk = Math.floor(n / 1e5); n %= 1e5;
+  const th = Math.floor(n / 1e3); n %= 1e3;
+  if (cr) parts.push(below1000(cr) + ' Crore');
+  if (lk) parts.push(below100(lk) + ' Lakh');
+  if (th) parts.push(below100(th) + ' Thousand');
+  if (n) parts.push(below1000(n));
+  return parts.join(' ') + ' Rupees Only';
+}
+
+const num = (id) => Number($(id).value.replace(/[^\d.]/g, '')) || 0;
+function calc() {
+  const a = num('qty') * num('rate');
+  $('amt').value = a || '';
+  $('total').value = a || '';
+  const g = Math.max(0, a - num('disc'));
+  $('grand').value = g || '';
+  $('words').textContent = words(g);
+}
+
+function product() { return P.get('product') || ''; }
+function setParticulars(p) { $('part').value = p ? `Handling fee for ${p}` : 'Handling fee for '; }
+
+function init() {
+  document.querySelectorAll('[data-keep]').forEach((el) => { el.value = localStorage.getItem('bill_' + el.id) || ''; el.addEventListener('input', () => localStorage.setItem('bill_' + el.id, el.value)); });
+  const n = (Number(localStorage.getItem('bill_lastNo')) || 0) + 1;
+  $('billNo').value = n;
+  $('date').value = todayBS();
+  $('cName').value = P.get('name') || '';
+  $('cAddr').value = P.get('address') || '';
+  setParticulars(product());
+  calc();
+}
+// remember the bill number when printing so the next bill continues the series
+window.addEventListener('beforeprint', () => { const n = Number($('billNo').value); if (n) localStorage.setItem('bill_lastNo', n); });
+function newBill() {
+  const n = Number($('billNo').value); if (n) localStorage.setItem('bill_lastNo', n);
+  history.replaceState(null, '', '/bill');
+  P.delete('name'); P.delete('address'); P.delete('product');
+  $('disc').value = ''; $('qty').value = 1; $('rate').value = 100; init();
+}
+['qty', 'rate', 'disc'].forEach((i) => $(i).addEventListener('input', calc));
+init();
+</script>
+</body>
+</html>
