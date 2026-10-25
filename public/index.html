@@ -58,6 +58,16 @@
   .info details summary { cursor:pointer; color:var(--acc); }
   .areas { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:160px; overflow:auto; }
   .areas span { background:#fff; border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:13px; }
+  .areas span.hit { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .acts { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .acts button { padding:8px 12px; font:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; }
+  .acts button.danger { color:var(--bad); border-color:#f0c4be; }
+  .edit { margin-top:10px; padding-top:6px; border-top:1px solid var(--line); }
+  .cb { position:relative; }
+  .dd { position:absolute; left:0; right:0; top:100%; z-index:20; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:260px; overflow:auto; margin-top:2px; min-width:220px; }
+  .opt { padding:10px 12px; border-bottom:1px solid var(--line); font-size:15px; cursor:pointer; }
+  .opt:last-child { border-bottom:0; } .opt:hover { background:#eef5fd; } .opt.none { color:var(--mut); cursor:default; }
+  .opt small { color:var(--mut); }
 </style>
 </head>
 <body>
@@ -86,8 +96,8 @@
       <label>Delivery type</label>
       <div class="seg" id="dtypes"></div>
       <div class="row">
-        <div><label>Origin branch</label><select id="from" required></select></div>
-        <div><label>Delivery destination</label><select id="to" required></select></div>
+        <div class="cb" id="fromWrap"><label>Origin branch</label><input id="from" placeholder="Type to search" autocomplete="off" required><div class="dd hide" id="fromDd"></div></div>
+        <div class="cb" id="toWrap"><label>Destination (branch or area)</label><input id="to" placeholder="Type branch or area" autocomplete="off" required><div class="dd hide" id="toDd"></div></div>
       </div>
       <div id="rate" class="info hide"></div>
       <div id="areas" class="info hide"></div>
@@ -153,9 +163,8 @@ async function start() {
     $('vref').value = cfg.vref;
     $('dtypes').innerHTML = cfg.deliveryTypes.map((t, i) => `<label><input type="radio" name="dt" value="${t}" ${i === 0 ? 'checked' : ''}><span>${LABELS[t]}</span></label>`).join('');
     $('pris').innerHTML = cfg.priorities.map((p, i) => `<label><input type="radio" name="pr" value="${p}" ${i === 0 ? 'checked' : ''}><span>${p}</span></label>`).join('');
-    const opts = '<option value="">Select branch</option>' + branches.map((b) => `<option>${esc(b)}</option>`).join('');
-    $('from').innerHTML = opts; $('to').innerHTML = opts;
-    const last = localStorage.getItem('lastFrom'); if (last) $('from').value = last;
+    BR = (await api('/api/branchdata')).branches;
+    const last = localStorage.getItem('lastFrom'); if (last && BR.some((b) => b.name === last)) setBranch('from', last);
   } catch (e) { if (e.message === 'login') return; alert(e.message); }
 }
 
@@ -163,7 +172,7 @@ async function start() {
 const dtype = () => document.querySelector('input[name=dt]:checked').value;
 let rateSeq = 0;
 async function updateRate() {
-  const from = $('from').value, to = $('to').value, box = $('rate'), seq = ++rateSeq;
+  const from = bv('from'), to = bv('to'), box = $('rate'), seq = ++rateSeq;
   if (!from || !to) { box.classList.add('hide'); return; }
   box.classList.remove('hide'); box.textContent = 'Getting delivery charge…';
   try {
@@ -175,19 +184,53 @@ async function updateRate() {
   } catch (e) { if (seq === rateSeq) box.textContent = 'Could not get delivery charge: ' + e.message; }
 }
 async function updateAreas() {
-  const to = $('to').value, box = $('areas');
+  const to = bv('to'), box = $('areas');
   if (!to) { box.classList.add('hide'); return; }
-  try {
-    const b = await api('/api/branch?name=' + encodeURIComponent(to));
-    if ($('to').value !== to) return;
-    box.classList.remove('hide');
-    box.innerHTML = b.areas.length
-      ? `<details open><summary>${esc(to)} delivers to ${b.areas.length} areas</summary><div class="areas">${b.areas.map((a) => `<span>${esc(a)}</span>`).join('')}</div></details>`
-      : `Covered areas for ${esc(to)} aren't available.`;
-  } catch (e) { box.classList.add('hide'); }
+  const b = BR.find((x) => x.name === to); // already loaded in the browser, no extra call
+  if (!b) { box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  box.innerHTML = b.areas.length
+    ? `<details open><summary>${esc(to)}${b.district ? ' (' + esc(b.district) + ')' : ''} delivers to ${b.areas.length} areas</summary><div class="areas">${b.areas.map((a) => `<span class="${a === pickedArea ? 'hit' : ''}">${esc(a)}</span>`).join('')}</div></details>`
+    : `Covered areas for ${esc(to)} aren't available.`;
 }
-$('from').addEventListener('change', updateRate);
-$('to').addEventListener('change', () => { updateRate(); updateAreas(); });
+// ---- searchable branch / area boxes ----
+let BR = [], pickedArea = '';
+const bv = (id) => $(id).dataset.v || '';
+function setBranch(id, name) { $(id).value = name; $(id).dataset.v = name; $(id + 'Dd').classList.add('hide'); }
+function combo(id, withAreas, onChange) {
+  const inp = $(id), dd = $(id + 'Dd');
+  const render = () => {
+    const q = inp.value.trim().toLowerCase();
+    const exact = BR.find((b) => b.name.toLowerCase() === q);
+    inp.dataset.v = exact ? exact.name : '';
+    if (!q) { dd.classList.add('hide'); onChange(); return; }
+    const items = [];
+    BR.forEach((b) => {
+      const n = b.name.toLowerCase();
+      if (n.startsWith(q)) items.push({ r: 0, b }); else if (n.includes(q) || b.district.toLowerCase().includes(q)) items.push({ r: 1, b });
+    });
+    if (withAreas) BR.forEach((b) => b.areas.forEach((a) => { if (a.toLowerCase().includes(q)) items.push({ r: 2, b, a }); }));
+    items.sort((x, y) => x.r - y.r);
+    const top = items.slice(0, 30);
+    dd._items = top;
+    dd.innerHTML = top.length
+      ? top.map((it, i) => `<div class="opt" data-i="${i}">${it.a ? `<b>${esc(it.a)}</b> <small>→ ${esc(it.b.name)}${it.b.district ? ' (' + esc(it.b.district) + ')' : ''}</small>` : `<b>${esc(it.b.name)}</b> <small>${esc(it.b.district)}</small>`}</div>`).join('')
+      : '<div class="opt none">No match</div>';
+    dd.classList.remove('hide');
+    onChange();
+  };
+  inp.addEventListener('input', () => { pickedArea = ''; render(); });
+  inp.addEventListener('focus', () => { if (inp.value && !inp.dataset.v) render(); });
+  dd.addEventListener('mousedown', (e) => e.preventDefault());
+  dd.addEventListener('click', (e) => {
+    const o = e.target.closest('.opt'); if (!o || o.classList.contains('none')) return;
+    const it = dd._items[+o.dataset.i]; pickedArea = it.a || '';
+    setBranch(id, it.b.name); onChange();
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('#' + id + 'Wrap')) dd.classList.add('hide'); });
+}
+combo('from', false, updateRate);
+combo('to', true, () => { updateRate(); updateAreas(); });
 $('dtypes').addEventListener('change', updateRate);
 
 // ---- orders + tracking ----
@@ -214,17 +257,52 @@ async function refreshAll() {
   try { await api('/api/refresh', {}); await loadOrders(); } catch (e) { alert(e.message); }
   b.disabled = false; b.textContent = 'Refresh status from courier';
 }
+const OFFER = 'Edit and delete change only this site. NCM has no edit or cancel option in its API, so "Message NCM" posts a note on the order for their staff.';
+async function doAction(act, card, order) {
+  const id = card.dataset.id;
+  try {
+    if (act === 'note' || act === 'cancel') {
+      const text = act === 'cancel' ? 'Vendor request: please cancel this order.' : prompt('Message to NCM about this order:');
+      if (!text) return;
+      if (act === 'cancel' && !confirm('Ask NCM to cancel this order? They decide whether it can still be stopped.')) return;
+      const r = await api('/api/order/note', { ncmId: id, text });
+      alert(r.note || 'Sent to NCM.');
+    } else if (act === 'del') {
+      if (!confirm('Remove this order from your list?\n\nThis does NOT cancel it at NCM. Use "Request cancel" for that.')) return;
+      await api('/api/order/delete', { ncmId: id });
+      await loadOrders();
+    } else if (act === 'edit') {
+      const box = card.querySelector('.editbox');
+      const f = (k, label, type = 'text') => `<label>${label}</label><input data-k="${k}" type="${type}" value="${esc(order[k] ?? '')}">`;
+      box.innerHTML = `<div class="edit">${f('name', 'Name')}${f('phone', 'Phone', 'tel')}${f('phone2', 'Alternate phone', 'tel')}${f('address', 'Address')}${f('packageType', 'Package type')}${f('cod', 'COD amount (Rs)', 'number')}${f('description', 'Description')}
+        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="notify" checked style="width:auto"> Also tell NCM about the change (as a note)</label>
+        <div class="sub" style="margin:6px 0">${OFFER}</div>
+        <button class="main" data-act="save">Save changes</button></div>`;
+    } else if (act === 'save') {
+      const body = { ncmId: id };
+      card.querySelectorAll('.edit [data-k]').forEach((el) => (body[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value));
+      const r = await api('/api/order/update', body);
+      alert(r.noteError ? 'Saved here. NCM note failed: ' + r.noteError : r.noteSent ? 'Saved, and NCM was told.' : 'Saved.');
+      await loadOrders();
+    }
+  } catch (err) { if (err.message !== 'login') alert(err.message); }
+}
 $('olist').addEventListener('click', async (e) => {
   const card = e.target.closest('.ord'); if (!card) return;
+  const act = e.target.closest('[data-act]');
+  if (act) { doAction(act.dataset.act, card, card._order || {}); return; }
+  if (e.target.closest('.detail')) return; // clicks inside the opened panel don't collapse it
   const box = card.querySelector('.detail');
   if (box.innerHTML) { box.innerHTML = ''; return; }
   box.textContent = 'Loading tracking…';
   try {
     const t = await api('/api/track?id=' + encodeURIComponent(card.dataset.id));
+    card._order = t.order;
     const fmt = (s) => (s && !isNaN(new Date(s)) ? new Date(s).toLocaleString() : esc(s || ''));
     box.innerHTML = `<ul class="tl">${t.history.map((h) => `<li>${esc(h.status)}<small>${fmt(h.time)}</small></li>`).join('') || '<li>No updates yet</li>'}</ul>` +
       (t.comments.length ? `<div class="sub" style="margin-top:6px"><b>Courier comments</b></div><ul class="tl">${t.comments.map((c) => `<li>${esc(c.text)}<small>${esc(c.by || '')} ${fmt(c.time)}</small></li>`).join('')}</ul>` : '') +
-      `<div class="sub" style="margin-top:6px">Address: ${esc(t.order.address)}</div>`;
+      `<div class="sub" style="margin-top:6px">Address: ${esc(t.order.address)}</div>` +
+      `<div class="acts"><button data-act="edit">Edit</button><button data-act="note">Message NCM</button><button data-act="cancel">Request cancel</button><button data-act="del" class="danger">Delete from list</button></div><div class="editbox"></div>`;
     const pill = card.querySelector('.st'); pill.textContent = t.order.status; pill.className = 'st ' + stClass(t.order.status);
   } catch (err) { box.innerHTML = `<div class="msg err" style="margin:8px 0 0">${esc(err.message)}</div>`; }
 });
@@ -249,9 +327,10 @@ $('phone').addEventListener('input', () => {
 
 $('f').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!bv('from') || !bv('to')) { $('result').innerHTML = '<div class="msg err">Pick the origin and destination from the list that appears while typing.</div>'; window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
   const btn = $('go'); btn.disabled = true; btn.textContent = 'Creating…';
   const body = {
-    deliveryType: document.querySelector('input[name=dt]:checked').value, from: $('from').value, to: $('to').value,
+    deliveryType: document.querySelector('input[name=dt]:checked').value, from: bv('from'), to: bv('to'),
     phone: $('phone').value, phone2: $('phone2').value, name: $('name').value, address: $('address').value,
     packageType: $('packageType').value, cod: $('cod').value, description: $('description').value,
     priority: document.querySelector('input[name=pr]:checked').value,
