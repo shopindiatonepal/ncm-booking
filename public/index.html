@@ -63,6 +63,8 @@
   .acts button { padding:8px 12px; font:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; }
   .acts button.danger { color:var(--bad); border-color:#f0c4be; }
   .edit { margin-top:10px; padding-top:6px; border-top:1px solid var(--line); }
+  .toast { position:fixed; left:12px; right:12px; bottom:16px; z-index:50; padding:12px 14px; border-radius:10px; font-size:15px; box-shadow:0 6px 20px rgba(0,0,0,.25); display:none; }
+  .toast.ok { background:#14804a; color:#fff; } .toast.err { background:#c0392b; color:#fff; }
   .cb { position:relative; }
   .dd { position:absolute; left:0; right:0; top:100%; z-index:20; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:260px; overflow:auto; margin-top:2px; min-width:220px; }
   .opt { padding:10px 12px; border-bottom:1px solid var(--line); font-size:15px; cursor:pointer; }
@@ -165,7 +167,7 @@ async function start() {
     $('pris').innerHTML = cfg.priorities.map((p, i) => `<label><input type="radio" name="pr" value="${p}" ${i === 0 ? 'checked' : ''}><span>${p}</span></label>`).join('');
     BR = (await api('/api/branchdata')).branches;
     const last = localStorage.getItem('lastFrom'); if (last && BR.some((b) => b.name === last)) setBranch('from', last);
-  } catch (e) { if (e.message === 'login') return; alert(e.message); }
+  } catch (e) { if (e.message === 'login') return; toast(e.message, false); }
 }
 
 // ---- delivery charge + destination coverage ----
@@ -248,44 +250,65 @@ async function loadOrders() {
       <div class="top"><span>${esc(o.name)}</span><span>#${esc(o.ncmId ?? '-')}</span></div>
       <div class="sub">${esc(o.phone)} · ${esc(o.from)} → ${esc(o.to)} · COD Rs ${o.cod}</div>
       <div class="sub">${new Date(o.createdAt).toLocaleString()} · ${esc(o.packageType)}</div>
-      <span class="st ${stClass(o.status)}">${esc(o.status)}</span><div class="detail"></div></div>`).join('') : '<div class="card">No orders yet.</div>';
+      <span class="st ${stClass(o.status)}">${esc(o.status)}</span>${String(o.ncmId).startsWith('TEST-') ? ' <span class="st">test order, not at NCM</span>' : ''}<div class="detail"></div></div>`).join('') : '<div class="card">No orders yet.</div>';
   } catch (e) { if (e.message !== 'login') $('olist').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
 let qTimer; $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadOrders, 300); });
 async function refreshAll() {
   const b = $('refreshBtn'); b.disabled = true; b.textContent = 'Checking courier…';
-  try { await api('/api/refresh', {}); await loadOrders(); } catch (e) { alert(e.message); }
+  try { await api('/api/refresh', {}); await loadOrders(); } catch (e) { toast(e.message, false); }
   b.disabled = false; b.textContent = 'Refresh status from courier';
 }
-const OFFER = 'Edit and delete change only this site. NCM has no edit or cancel option in its API, so "Message NCM" posts a note on the order for their staff.';
+const OFFER = 'Edit and delete change only this site. NCM has no edit or cancel option in its API, so the note below posts a comment on the order for NCM staff.';
+let toastTimer;
+function toast(msg, ok = true) {
+  let t = $('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = 'none'), ok ? 5000 : 12000);
+}
+function editForm(o) {
+  const f = (k, label, type = 'text') => '<label>' + label + '</label><input data-k="' + k + '" type="' + type + '" value="' + esc(o[k] ?? '') + '">';
+  const sel = (k, label, opts) => '<label>' + label + '</label><select data-k="' + k + '">' + opts.map(([v, l]) => '<option value="' + v + '"' + (o[k] === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+  return '<div class="edit">' + sel('deliveryType', 'Delivery type', Object.entries(LABELS)) +
+    '<div class="cb" id="efromWrap"><label>Origin branch</label><input id="efrom" autocomplete="off" placeholder="Type to search"><div class="dd hide" id="efromDd"></div></div>' +
+    '<div class="cb" id="etoWrap"><label>Destination (branch or area)</label><input id="eto" autocomplete="off" placeholder="Type branch or area"><div class="dd hide" id="etoDd"></div></div>' +
+    f('phone', 'Phone', 'tel') + f('phone2', 'Alternate phone', 'tel') + f('name', 'Customer name') + f('address', 'Customer address') +
+    f('packageType', 'Package type') + f('cod', 'COD amount (Rs)', 'number') + f('description', 'Description') +
+    sel('priority', 'Priority', ['Normal', 'High', 'Urgent'].map((p) => [p, p])) +
+    '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="notify" checked style="width:auto"> Also tell NCM about the change (as a note)</label>' +
+    '<div class="sub" style="margin:6px 0">' + OFFER + '</div><button class="main" data-act="save">Save changes</button></div>';
+}
 async function doAction(act, card, order) {
-  const id = card.dataset.id;
+  const id = card.dataset.id, box = card.querySelector('.editbox');
+  const open = (html) => { document.querySelectorAll('.editbox').forEach((x) => { if (x !== box) x.innerHTML = ''; }); box.innerHTML = html; };
   try {
-    if (act === 'note' || act === 'cancel') {
-      const text = act === 'cancel' ? 'Vendor request: please cancel this order.' : prompt('Message to NCM about this order:');
-      if (!text) return;
-      if (act === 'cancel' && !confirm('Ask NCM to cancel this order? They decide whether it can still be stopped.')) return;
-      const r = await api('/api/order/note', { ncmId: id, text });
-      alert(r.note || 'Sent to NCM.');
+    if (act === 'edit') {
+      open(editForm(order));
+      setBranch('efrom', order.from || ''); setBranch('eto', order.to || '');
+      combo('efrom', false, () => {}); combo('eto', true, () => {});
+    } else if (act === 'note') {
+      open('<div class="edit"><label>Message for NCM (posted as a comment on order #' + esc(id) + ')</label><textarea id="noteText" rows="3" placeholder="e.g. Please call the customer before delivery"></textarea><button class="main" data-act="sendnote" style="margin-top:8px">Send to NCM</button></div>');
+    } else if (act === 'cancel') {
+      open('<div class="edit"><div class="sub" style="margin-bottom:8px">This posts "please cancel and delete this order" as a comment on order #' + esc(id) + '. NCM decides whether it can still be stopped.</div><button class="main" data-act="sendcancel" style="background:var(--bad)">Yes, send cancel request</button></div>');
     } else if (act === 'del') {
-      if (!confirm('Remove this order from your list?\n\nThis does NOT cancel it at NCM. Use "Request cancel" for that.')) return;
-      await api('/api/order/delete', { ncmId: id });
-      await loadOrders();
-    } else if (act === 'edit') {
-      const box = card.querySelector('.editbox');
-      const f = (k, label, type = 'text') => `<label>${label}</label><input data-k="${k}" type="${type}" value="${esc(order[k] ?? '')}">`;
-      box.innerHTML = `<div class="edit">${f('name', 'Name')}${f('phone', 'Phone', 'tel')}${f('phone2', 'Alternate phone', 'tel')}${f('address', 'Address')}${f('packageType', 'Package type')}${f('cod', 'COD amount (Rs)', 'number')}${f('description', 'Description')}
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="notify" checked style="width:auto"> Also tell NCM about the change (as a note)</label>
-        <div class="sub" style="margin:6px 0">${OFFER}</div>
-        <button class="main" data-act="save">Save changes</button></div>`;
+      open('<div class="edit"><div class="sub" style="margin-bottom:8px">Remove this order from your list? It does NOT cancel it at NCM. Use "Request cancel" for that.</div><button class="main" data-act="confirmdel" style="background:var(--bad)">Yes, remove from list</button></div>');
+    } else if (act === 'sendnote' || act === 'sendcancel') {
+      const text = act === 'sendcancel' ? 'Vendor request: please cancel and delete this order.' : ($('noteText').value || '').trim();
+      if (!text) return toast('Write a message first', false);
+      const r = await api('/api/order/note', { ncmId: id, text });
+      toast(r.note || 'Posted on the NCM order as a comment.'); box.innerHTML = '';
+    } else if (act === 'confirmdel') {
+      await api('/api/order/delete', { ncmId: id }); toast('Removed from your list.'); await loadOrders();
     } else if (act === 'save') {
       const body = { ncmId: id };
       card.querySelectorAll('.edit [data-k]').forEach((el) => (body[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value));
+      body.from = bv('efrom'); body.to = bv('eto');
+      if (!body.from || !body.to) return toast('Pick origin and destination from the list that appears while typing', false);
       const r = await api('/api/order/update', body);
-      alert(r.noteError ? 'Saved here. NCM note failed: ' + r.noteError : r.noteSent ? 'Saved, and NCM was told.' : 'Saved.');
+      toast(r.noteError ? 'Saved here, but the NCM note failed: ' + r.noteError : r.noteSent ? 'Saved, and NCM was told.' : 'Saved.', !r.noteError);
       await loadOrders();
     }
-  } catch (err) { if (err.message !== 'login') alert(err.message); }
+  } catch (err) { if (err.message !== 'login') toast(err.message, false); }
 }
 $('olist').addEventListener('click', async (e) => {
   const card = e.target.closest('.ord'); if (!card) return;
