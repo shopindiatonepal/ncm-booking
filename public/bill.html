@@ -29,6 +29,7 @@
   .words { border:1px solid #333; border-top:0; padding:6px; min-height:60px; }
   .sig { margin-top:26px; display:flex; justify-content:flex-end; gap:8px; align-items:baseline; }
   .sig input { width:50%; }
+  .hide { display:none; }
   @media print {
     body { background:#fff; } .bar, .tip { display:none; }
     .sheet { border:0; max-width:none; margin:0; padding:0; }
@@ -40,8 +41,10 @@
 <div class="bar">
   <button onclick="printBill()">Print / Save PDF</button>
   <button class="alt" onclick="newBill()">New bill</button>
+  <button id="saveBtn" class="alt hide" onclick="saveToOrder()">Save to order</button>
   <span style="display:flex;gap:6px"><input id="nextNo" placeholder="Next bill no." style="width:130px;padding:8px;border:1px solid #cbd0d8;border-radius:8px;background:#fff"><button class="alt" onclick="setNext()">Set</button></span>
 </div>
+<div class="tip" id="orderTip" style="display:none"></div>
 <div class="tip">Every field is editable. Bill numbers continue from the last printed bill. Used a number in another store? Type the next one in the box above and tap Set, or just edit "Bill no" on the bill. Letters work too (A-241 becomes A-242).</div>
 
 <div class="sheet">
@@ -81,21 +84,10 @@
   <div class="sig"><b>Signature:</b><input id="sig" placeholder="(sign after printing)"></div>
 </div>
 
+<script src="/common.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const P = new URLSearchParams(location.search);
-
-// --- AD -> BS. Table covers BS 2083 (14 Apr 2026 – 13 Apr 2027) only; outside that, type the date yourself.
-const BS2083 = [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 31];
-function todayBS() {
-  const start = Date.UTC(2026, 3, 14), now = new Date();
-  let days = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 864e5);
-  if (days < 0) return '';
-  let m = 0;
-  while (m < 12 && days >= BS2083[m]) { days -= BS2083[m]; m++; }
-  if (m >= 12) return '';
-  return `2083/${String(m + 1).padStart(2, '0')}/${String(days + 1).padStart(2, '0')}`;
-}
 
 // --- amount in words (Rupees)
 const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -131,8 +123,7 @@ function setParticulars(p) { $('part').value = p ? `Handling fee for ${p}` : 'Ha
 
 function init() {
   document.querySelectorAll('[data-keep]').forEach((el) => { el.value = localStorage.getItem('bill_' + el.id) || ''; el.addEventListener('input', () => localStorage.setItem('bill_' + el.id, el.value)); });
-  const forced = localStorage.getItem('bill_next'), last = localStorage.getItem('bill_lastNo');
-  $('billNo').value = forced || (last ? incr(last) : '1');
+  $('billNo').value = nextBillNo();
   $('date').value = todayBS();
   $('cName').value = P.get('name') || '';
   $('cAddr').value = P.get('address') || '';
@@ -140,27 +131,60 @@ function init() {
   calc();
 }
 // remember the bill number when printing so the next bill continues the series
-function saveBill() { const n = $('billNo').value.trim(); if (n) { localStorage.setItem('bill_lastNo', n); localStorage.removeItem('bill_next'); } }
+// A bill opened from an order already has its own number; printing it must not move the counter.
+let loadedBill = false, orderId = P.get('order') || '';
+function saveBill() { if (!loadedBill) markBillUsed($('billNo').value); }
 window.addEventListener('beforeprint', saveBill);
 function printBill() { saveBill(); window.print(); }
 function setNext() {
   const v = $('nextNo').value.trim(); if (!v) return;
-  localStorage.setItem('bill_next', v); $('billNo').value = v; $('nextNo').value = '';
-}
-// add 1 to the last number in the text, keeping zeros and letters: 099 -> 100, A-241 -> A-242
-function incr(s) {
-  const m = /^(.*?)(\d+)(\D*)$/.exec(s);
-  if (!m) return s + '1';
-  const n = String(Number(m[2]) + 1).padStart(m[2].length, '0');
-  return m[1] + n + m[3];
+  lsSet('bill_next', v); if (!loadedBill) $('billNo').value = v; $('nextNo').value = '';
 }
 function newBill() {
   history.replaceState(null, '', '/bill');
-  P.delete('name'); P.delete('address'); P.delete('product');
+  P.delete('name'); P.delete('address'); P.delete('product'); P.delete('order');
+  orderId = ''; loadedBill = false; $('saveBtn').classList.add('hide'); $('orderTip').style.display = 'none';
   $('disc').value = ''; $('qty').value = 1; $('rate').value = 100; init();
 }
 ['qty', 'rate', 'disc'].forEach((i) => $(i).addEventListener('input', calc));
+
+function tip(msg, ok = true) { const t = $('orderTip'); t.style.display = 'block'; t.textContent = msg; t.style.color = ok ? '#14804a' : '#c0392b'; }
+async function loadOrderBill() {
+  try {
+    const r = await fetch('/api/order?id=' + encodeURIComponent(orderId));
+    if (r.status === 401) { tip('Please open the booking page and log in first, then open this bill again.', false); return; }
+    const d = await r.json();
+    if (!r.ok) { tip(d.error || 'Could not load the order', false); return; }
+    const o = d.order, b = o.bill;
+    $('saveBtn').classList.remove('hide');
+    $('cName').value = o.name || ''; $('cAddr').value = o.address || '';
+    if (b) {
+      loadedBill = true;
+      $('billNo').value = b.no || ''; $('date').value = b.date || todayBS();
+      $('part').value = b.particulars || ''; $('qty').value = String(b.qty); $('rate').value = String(b.rate); $('disc').value = b.discount ? String(b.discount) : '';
+      tip('Saved bill for order #' + o.ncmId + '. Edit anything, then tap "Save to order" to keep the changes.');
+    } else {
+      setParticulars(o.packageType);
+      tip('Order #' + o.ncmId + ' has no bill yet. Fill it in and tap "Save to order".');
+    }
+    calc();
+  } catch (e) { tip('Could not load the order: ' + e.message, false); }
+}
+async function saveToOrder() {
+  const body = { ncmId: orderId, bill: { no: $('billNo').value.trim(), date: $('date').value.trim(), particulars: $('part').value.trim(), qty: num('qty') || 1, rate: num('rate'), discount: num('disc') } };
+  if (!body.bill.no) { tip('Enter a bill number first', false); return; }
+  try {
+    const r = await fetch('/api/order/bill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) { tip(d.error || 'Could not save', false); return; }
+    if (!loadedBill) markBillUsed(body.bill.no);
+    loadedBill = true;
+    tip('Saved to order #' + orderId + '.');
+  } catch (e) { tip('Could not save: ' + e.message, false); }
+}
+
 init();
+if (orderId) loadOrderBill();
 </script>
 </body>
 </html>
