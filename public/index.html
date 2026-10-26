@@ -95,7 +95,7 @@
 </div>
 
 <div id="app" class="hide">
-<header><h1 id="title">New Order</h1><span><a href="#" id="tabBook" onclick="show('book');return false">New order</a><a href="#" id="tabOrders" onclick="show('orders');return false">Orders</a><a href="#" id="tabCustomers" onclick="show('customers');return false">Customers</a><a href="/bill" target="_blank">Bill</a><a href="#" onclick="logout()">Logout</a></span></header>
+<header><h1 id="title">New Order</h1><span><a href="#" id="tabBook" onclick="show('book');return false">New order</a><a href="#" id="tabOrders" onclick="show('orders');return false">Orders</a><a href="#" id="tabCustomers" onclick="show('customers');return false">Customers</a><a href="#" data-billopen="">Bill</a><a href="#" onclick="logout()">Logout</a></span></header>
 
 <main id="ordersView" class="hide">
   <div class="card">
@@ -165,6 +165,9 @@
 </main>
 </div>
 
+<div id="billBox" class="modal hide" style="align-items:stretch"><div style="background:#fff;width:100%;max-width:820px;margin:auto;height:96vh;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
+<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #e3e6ea"><b>Bill</b><button type="button" id="billClose" style="padding:6px 14px;border:1px solid #cbd0d8;border-radius:8px;background:#fff;cursor:pointer;font:inherit">Close ✕</button></div>
+<iframe id="billFrame" style="flex:1;border:0;width:100%"></iframe></div></div>
 <div id="confirmBox" class="modal hide"><div class="panel">
   <h3>Confirm order</h3>
   <div id="confirmBody"></div>
@@ -234,11 +237,11 @@ async function updateRate() {
   if (!from || !to) { box.classList.add('hide'); return; }
   box.classList.remove('hide'); box.textContent = 'Getting delivery charge…';
   try {
-    const r = await api(`/api/rate?from=${enc(from)}&to=${enc(to)}&type=${dtype()}`);
+    const r = await api(`/api/rate?from=${enc(from)}&to=${enc(to)}&type=${dtype()}&weight=${enc($('weight').value || '')}`);
     if (seq !== rateSeq) return;
     box.innerHTML = r.charge == null
       ? esc(r.note || 'Delivery charge not available for this route')
-      : `Delivery charge ${esc(from)} → ${esc(to)} (${LABELS[dtype()]}): <b class="big">Rs ${esc(r.charge)}</b>`;
+      : `Delivery charge ${esc(from)} → ${esc(to)} (${LABELS[dtype()]}${$('weight').value ? ', ' + esc($('weight').value) + ' kg' : ''}): <b class="big">Rs ${esc(r.charge)}</b>`;
   } catch (e) { if (seq === rateSeq) box.textContent = 'Could not get delivery charge: ' + e.message; }
 }
 async function updateAreas() {
@@ -314,7 +317,7 @@ function orderCard(o) {
   const draft = !!o.draft, test = String(o.ncmId).startsWith('TEST-');
   const acts = [];
   if (draft) acts.push('<button type="button" class="primary" data-act="send">Create NCM order</button>');
-  acts.push('<a href="/bill?order=' + enc(o.id) + '" target="_blank">' + (o.bill ? 'View bill' : 'Create bill') + '</a>');
+  acts.push('<a href="#" data-billopen="' + esc(o.id) + '">' + (o.bill ? 'View bill' : 'Create bill') + '</a>');
   acts.push('<button type="button" data-act="edit">Edit</button>', '<button type="button" data-act="again">Order again</button>');
   if (!draft) acts.push('<button type="button" data-act="note">Message NCM</button>', '<button type="button" data-act="cancel">Request cancel</button>');
   acts.push('<button type="button" class="danger" data-act="del">Delete</button>');
@@ -445,6 +448,7 @@ async function loadHist() {
     HIST = h.orders;
   } catch (e) { $('hist').textContent = ''; }
 }
+let wTimer; $('weight').addEventListener('input', () => { clearTimeout(wTimer); wTimer = setTimeout(updateRate, 500); });
 $('phone').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHist, 400); });
 $('hist').addEventListener('click', (e) => { const r = e.target.closest('[data-reuse]'); if (r) { e.preventDefault(); fillFrom(HIST[+r.dataset.reuse] || {}); } });
 
@@ -579,6 +583,16 @@ $('addBox').addEventListener('click', (e) => { const b = e.target.closest('[data
 let cqTimer; $('cq').addEventListener('input', () => { clearTimeout(cqTimer); cqTimer = setTimeout(loadCustomers, 300); });
 
 fetch('/api/config').then((r) => (r.ok ? start() : showLogin()));
+
+// ---- bill pop-up (no new page) ----
+function openBill(id) { $('billFrame').src = '/bill?embed=1' + (id ? '&order=' + enc(id) : ''); $('billBox').classList.remove('hide'); }
+function closeBill() { $('billBox').classList.add('hide'); $('billFrame').src = 'about:blank'; }
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('[data-billopen]');
+  if (a) { e.preventDefault(); e.stopPropagation(); openBill(a.getAttribute('data-billopen')); }
+}, true);
+$('billClose').addEventListener('click', closeBill);
+window.addEventListener('message', (e) => { if (e.data && e.data.billSaved) { try { loadOrders(); } catch {} } });
 </script>
 </body>
 </html>
