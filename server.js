@@ -264,10 +264,11 @@ http.createServer(async (req, res) => {
         const from = clean(url.searchParams.get('from'), 60), to = clean(url.searchParams.get('to'), 60), type = url.searchParams.get('type');
         if (!from || !to || !RATE_TYPE[type]) return send(res, 400, { error: 'from, to and type are required' });
         if (TEST_MODE) return send(res, 200, { charge: null, note: 'Delivery charge shows once the API key is added' });
-        const key = [from, to, type].join('|');
+        const w = Math.max(0, Number(url.searchParams.get('weight')) || 0), key = [from, to, type, w].join('|');
         const hit = rateCache.get(key);
         if (hit && Date.now() - hit.t < 6 * 3600e3) return send(res, 200, { charge: hit.charge });
         const q = new URLSearchParams({ creation: from, destination: to, type: RATE_TYPE[type] });
+        if (w > 0) q.set('weight', String(w));
         const d = await ncm('GET', '/api/v1/shipping-rate?' + q);
         const charge = d.charge ?? d.delivery_charge ?? (d.data && (d.data.charge ?? d.data.delivery_charge)) ?? null;
         if (charge !== null) rateCache.set(key, { t: Date.now(), charge });
