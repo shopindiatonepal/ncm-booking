@@ -8,9 +8,10 @@
   :root { --bg:#f5f6f8; --card:#fff; --ink:#1b1f24; --mut:#6b7280; --line:#e2e5ea; --acc:#0b6bcb; --ok:#14804a; --bad:#c0392b; }
   * { box-sizing: border-box; }
   body { margin:0; font:16px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--ink); }
-  header { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--line); }
-  header h1 { font-size:18px; margin:0; }
-  header a { color:var(--acc); text-decoration:none; font-size:14px; margin-left:12px; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px 12px; padding:14px 16px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; }
+  header a { color:var(--acc); text-decoration:none; font-size:14px; margin-left:12px; display:inline-block; padding:4px 0; }
+  header a.on { font-weight:700; text-decoration:underline; }
   main { max-width:620px; margin:0 auto; padding:16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
   h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 12px; }
@@ -30,25 +31,27 @@
   .pri input[value=Urgent]:checked + span { background:var(--bad); border-color:var(--bad); }
   button.main { width:100%; padding:14px; font:inherit; font-weight:600; background:var(--acc); color:#fff; border:0; border-radius:10px; cursor:pointer; }
   button.main:disabled { opacity:.6; }
+  button.main.alt2 { background:#fff; color:var(--ink); border:1px solid var(--line); margin-top:8px; }
   .fixed { background:#f0f2f5; color:var(--mut); }
+  .note { color:var(--mut); font-size:14px; }
+  .sub { color:var(--mut); font-size:14px; margin-top:2px; }
+  .top { display:flex; justify-content:space-between; gap:8px; font-weight:600; }
   .hist { margin-top:10px; font-size:14px; }
   .chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
   .chip { padding:3px 10px; border-radius:999px; font-size:13px; background:#eef0f3; }
   .chip.d { background:#e3f4ea; color:var(--ok); } .chip.r { background:#fbe9e7; color:var(--bad); }
   .hist ul { margin:6px 0 0; padding:0; list-style:none; max-height:150px; overflow:auto; }
-  .hist li { padding:6px 0; border-top:1px solid var(--line); color:var(--mut); }
+  .hist li { padding:6px 0; border-top:1px solid var(--line); color:var(--mut); display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
   .banner { background:#fff6e0; border:1px solid #f0d58a; color:#7a5b00; padding:10px 12px; border-radius:8px; font-size:14px; margin-bottom:14px; }
   .msg { padding:12px; border-radius:8px; margin-bottom:14px; font-size:15px; }
   .msg.ok { background:#e3f4ea; color:var(--ok); } .msg.err { background:#fbe9e7; color:var(--bad); }
   #login { max-width:340px; margin:18vh auto; }
   .hide { display:none; }
   a.bill { display:inline-block; margin-top:6px; color:var(--acc); }
-  header a.on { font-weight:700; text-decoration:underline; }
   .ord { cursor:pointer; }
-  .ord .top { display:flex; justify-content:space-between; gap:8px; font-weight:600; }
-  .ord .sub { color:var(--mut); font-size:14px; margin-top:2px; }
+  .cust .top span:last-child { font-weight:500; color:var(--mut); }
   .st { display:inline-block; margin-top:6px; padding:2px 10px; border-radius:999px; font-size:13px; background:#eef0f3; }
-  .st.d { background:#e3f4ea; color:var(--ok); } .st.r { background:#fbe9e7; color:var(--bad); }
+  .st.d { background:#e3f4ea; color:var(--ok); } .st.r { background:#fbe9e7; color:var(--bad); } .st.w { background:#fff6e0; color:#7a5b00; }
   .tl { margin:12px 0 0; padding:0 0 0 14px; border-left:2px solid var(--line); list-style:none; font-size:14px; }
   .tl li { position:relative; padding:0 0 10px 10px; }
   .tl li::before { content:''; position:absolute; left:-20px; top:5px; width:10px; height:10px; border-radius:50%; background:var(--acc); }
@@ -60,29 +63,22 @@
   .areas span { background:#fff; border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:13px; }
   .areas span.hit { background:var(--acc); color:#fff; border-color:var(--acc); }
   .acts { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-  .acts button { padding:8px 12px; font:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; }
+  .acts button, .acts a { padding:8px 12px; font:inherit; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; color:var(--ink); text-decoration:none; }
+  .acts button.primary { background:var(--acc); color:#fff; border-color:var(--acc); font-weight:600; }
   .acts button.danger { color:var(--bad); border-color:#f0c4be; }
   .edit { margin-top:10px; padding-top:6px; border-top:1px solid var(--line); }
-  .toast { position:fixed; left:12px; right:12px; bottom:16px; z-index:50; padding:12px 14px; border-radius:10px; font-size:15px; box-shadow:0 6px 20px rgba(0,0,0,.25); display:none; }
+  .toast { position:fixed; left:12px; right:12px; bottom:16px; z-index:70; padding:12px 14px; border-radius:10px; font-size:15px; box-shadow:0 6px 20px rgba(0,0,0,.25); display:none; }
   .toast.ok { background:#14804a; color:#fff; } .toast.err { background:#c0392b; color:#fff; }
-  .acts a { padding:8px 12px; font-size:14px; border:1px solid var(--line); background:#fff; border-radius:8px; color:var(--ink); text-decoration:none; }
   .tid { margin-top:6px; font-size:14px; word-break:break-all; }
+  .tid:empty { display:none; }
   .mini { font:inherit; font-size:13px; padding:2px 10px; border:1px solid var(--acc); border-radius:999px; background:transparent; color:var(--acc); cursor:pointer; text-decoration:none; margin-left:6px; display:inline-block; }
   .big2 { font-size:20px; font-weight:700; margin:2px 0; }
-  .tog { display:flex; align-items:center; gap:12px; margin:0; color:var(--ink); font-size:16px; cursor:pointer; }
-  .tog input { position:absolute; opacity:0; width:0; }
-  .tog .sw { width:46px; height:26px; border-radius:999px; background:#cbd0d8; position:relative; flex:none; transition:.15s; }
-  .tog .sw::after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:.15s; }
-  .tog input:checked + .sw { background:var(--ok); } .tog input:checked + .sw::after { left:23px; }
-  .tog input:focus-visible + .sw { outline:2px solid var(--acc); outline-offset:2px; }
   .modal { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; }
   .modal.hide { display:none; }
   .panel { background:#fff; width:100%; max-width:560px; border-radius:16px 16px 0 0; padding:18px 16px 20px; max-height:90vh; overflow:auto; }
   .panel h3 { margin:0 0 10px; font-size:18px; }
   .crow { display:flex; justify-content:space-between; gap:14px; padding:7px 0; border-bottom:1px solid var(--line); font-size:15px; }
   .crow span { color:var(--mut); flex:none; } .crow b { text-align:right; font-weight:600; word-break:break-word; }
-  button.main.alt2 { background:#fff; color:var(--ink); border:1px solid var(--line); margin-top:8px; }
-  .hist li { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
   .cb { position:relative; }
   .dd { position:absolute; left:0; right:0; top:100%; z-index:20; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.12); max-height:260px; overflow:auto; margin-top:2px; min-width:220px; }
   .opt { padding:10px 12px; border-bottom:1px solid var(--line); font-size:15px; cursor:pointer; }
@@ -99,16 +95,28 @@
 </div>
 
 <div id="app" class="hide">
-<header><h1 id="title">Book Delivery</h1><span><a href="#" id="tabBook" onclick="show('book');return false">Book</a><a href="#" id="tabOrders" onclick="show('orders');return false">Orders</a><a href="/bill" target="_blank">Bill</a><a href="#" onclick="logout()">Logout</a></span></header>
+<header><h1 id="title">New Order</h1><span><a href="#" id="tabBook" onclick="show('book');return false">New order</a><a href="#" id="tabOrders" onclick="show('orders');return false">Orders</a><a href="#" id="tabCustomers" onclick="show('customers');return false">Customers</a><a href="/bill" target="_blank">Bill</a><a href="#" onclick="logout()">Logout</a></span></header>
+
 <main id="ordersView" class="hide">
   <div class="card">
     <input id="q" placeholder="Search name, phone, order ID, tracking ID, bill no">
+    <select id="ofilter" style="margin-top:10px"><option value="">All orders</option><option value="draft">Not sent to NCM yet</option><option value="sent">Sent to NCM</option></select>
     <button class="main" style="margin-top:10px" id="refreshBtn" onclick="refreshAll()">Refresh status from courier</button>
   </div>
   <div id="olist"></div>
 </main>
+
+<main id="customersView" class="hide">
+  <div class="card">
+    <input id="cq" placeholder="Search name, phone, address">
+    <button type="button" class="main" style="margin-top:10px" id="addCust">Add customer</button>
+    <div id="addBox"></div>
+  </div>
+  <div id="clist"></div>
+</main>
+
 <main id="bookView">
-  <div id="test" class="banner hide">Test mode: no courier API key is set yet, so orders are saved here only and are NOT sent to the courier.</div>
+  <div id="test" class="banner hide">Test mode: no courier API key is set yet, so "Create NCM order" only makes a test order and nothing reaches the courier.</div>
   <div id="result"></div>
   <form id="f" autocomplete="off">
     <div class="card">
@@ -129,15 +137,15 @@
 
     <div class="card">
       <h2>Customer</h2>
-      <label>Phone number</label>
-      <input id="phone" type="tel" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" required>
-      <div id="hist" class="hist"></div>
-      <label>Alternate phone (optional)</label>
-      <input id="phone2" type="tel" inputmode="numeric" maxlength="14">
       <label>Customer name</label>
       <input id="name" required>
       <label>Customer address</label>
       <input id="address" required>
+      <label>Phone number 1</label>
+      <input id="phone" type="tel" inputmode="numeric" maxlength="14" placeholder="98XXXXXXXX" required>
+      <div id="hist" class="hist"></div>
+      <label>Phone number 2 (optional)</label>
+      <input id="phone2" type="tel" inputmode="numeric" maxlength="14">
     </div>
 
     <div class="card">
@@ -151,19 +159,8 @@
       <label>Description</label>
       <textarea id="description" placeholder="Any note for the courier"></textarea>
     </div>
-
-    <div class="card">
-      <h2>Bill</h2>
-      <label class="tog"><input type="checkbox" id="billOn" checked><span class="sw"></span> Create a bill with this order</label>
-      <div id="billFields">
-        <div class="row">
-          <div><label>Bill no</label><input id="billNo"></div>
-          <div><label>Handling fee (Rs)</label><input id="billRate" type="number" inputmode="numeric" min="0" value="100"></div>
-        </div>
-        <div class="sub" style="margin-top:8px">The bill reads "Handling fee for (package type)". Open it from the Orders tab to print.</div>
-      </div>
-    </div>
-    <button class="main" id="go">Create order</button>
+    <div class="note" style="margin-bottom:10px">Saving keeps the order on this site only. You send it to NCM, and make its bill, later from the Orders tab.</div>
+    <button class="main" id="go">Save order</button>
   </form>
 </main>
 </div>
@@ -171,16 +168,17 @@
 <div id="confirmBox" class="modal hide"><div class="panel">
   <h3>Confirm order</h3>
   <div id="confirmBody"></div>
-  <button class="main" style="margin-top:14px" onclick="submitOrder()">Confirm &amp; create order</button>
+  <button class="main" style="margin-top:14px" onclick="submitOrder()">Confirm &amp; save order</button>
   <button class="main alt2" onclick="closeConfirm()">Edit first</button>
 </div></div>
 
 <script src="/common.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let CFG = {}, ORDERS = {}, HIST = [];
+let CFG = {}, ORDERS = {}, HIST = [], CUST = {}, BR = [], pickedArea = '';
 const LABELS = { Door2Door: 'Door to Door', Door2Branch: 'Door to Branch', Branch2Door: 'Branch to Door', Branch2Branch: 'Branch to Branch' };
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const enc = encodeURIComponent;
 
 async function api(path, opts) {
   const r = await fetch(path, opts && { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(opts) });
@@ -197,10 +195,17 @@ async function login() {
 $('pass').addEventListener('keydown', (e) => e.key === 'Enter' && login());
 async function logout() { await fetch('/api/logout'); location.reload(); }
 
+let toastTimer;
+function toast(msg, ok = true) {
+  let t = $('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = 'none'), ok ? 5000 : 12000);
+}
+
 async function start() {
   try {
     const cfg = await api('/api/config'); CFG = cfg;
-    const { branches } = await api('/api/branches');
+    await api('/api/branches');
     $('login').classList.add('hide'); $('app').classList.remove('hide'); show('book');
     $('test').classList.toggle('hide', !cfg.testMode);
     $('vref').value = cfg.vref;
@@ -208,10 +213,17 @@ async function start() {
     $('pris').innerHTML = cfg.priorities.map((p, i) => `<label><input type="radio" name="pr" value="${p}" ${i === 0 ? 'checked' : ''}><span>${p}</span></label>`).join('');
     BR = (await api('/api/branchdata')).branches;
     const last = lsGet('lastFrom'); if (last && BR.some((b) => b.name === last)) setBranch('from', last);
-    $('billOn').checked = lsGet('billOn') !== '0'; $('billNo').value = nextBillNo(); syncBill();
     const tq = new URLSearchParams(location.search).get('track'); // link from a tracking ID: open that order's tracking
     if (tq) { $('q').value = tq; await show('orders'); const c = document.querySelector('.ord'); if (c) c.click(); }
   } catch (e) { if (e.message === 'login') return; toast(e.message, false); }
+}
+
+function show(v) {
+  const views = { book: ['bookView', 'tabBook', 'New Order'], orders: ['ordersView', 'tabOrders', 'Orders'], customers: ['customersView', 'tabCustomers', 'Customers'] };
+  for (const [k, [view, tab]] of Object.entries(views)) { $(view).classList.toggle('hide', v !== k); $(tab).classList.toggle('on', v === k); }
+  $('title').textContent = views[v][2];
+  if (v === 'orders') return loadOrders();
+  if (v === 'customers') return loadCustomers();
 }
 
 // ---- delivery charge + destination coverage ----
@@ -222,7 +234,7 @@ async function updateRate() {
   if (!from || !to) { box.classList.add('hide'); return; }
   box.classList.remove('hide'); box.textContent = 'Getting delivery charge…';
   try {
-    const r = await api(`/api/rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&type=${dtype()}`);
+    const r = await api(`/api/rate?from=${enc(from)}&to=${enc(to)}&type=${dtype()}`);
     if (seq !== rateSeq) return;
     box.innerHTML = r.charge == null
       ? esc(r.note || 'Delivery charge not available for this route')
@@ -240,7 +252,6 @@ async function updateAreas() {
     : `Covered areas for ${esc(to)} aren't available.`;
 }
 // ---- searchable branch / area boxes ----
-let BR = [], pickedArea = '';
 const bv = (id) => $(id).dataset.v || '';
 function setBranch(id, name) { $(id).value = name; $(id).dataset.v = name; $(id + 'Dd').classList.add('hide'); }
 function combo(id, withAreas, onChange) {
@@ -279,19 +290,10 @@ combo('from', false, updateRate);
 combo('to', true, () => { updateRate(); updateAreas(); });
 $('dtypes').addEventListener('change', updateRate);
 
-// ---- orders + tracking ----
-function show(v) {
-  $('bookView').classList.toggle('hide', v !== 'book'); $('ordersView').classList.toggle('hide', v !== 'orders');
-  $('tabBook').classList.toggle('on', v === 'book'); $('tabOrders').classList.toggle('on', v === 'orders');
-  $('title').textContent = v === 'book' ? 'Book Delivery' : 'Orders';
-  if (v === 'orders') return loadOrders();
-}
-function syncBill() { $('billFields').classList.toggle('hide', !$('billOn').checked); lsSet('billOn', $('billOn').checked ? '1' : '0'); }
-$('billOn').addEventListener('change', syncBill);
-
 // ---- tracking ID helpers ----
-function trackHref(id) { return CFG.trackUrl ? CFG.trackUrl.replace('{id}', encodeURIComponent(id)) : '/?track=' + encodeURIComponent(id); }
+function trackHref(id) { return CFG.trackUrl ? CFG.trackUrl.replace('{id}', enc(id)) : '/?track=' + enc(id); }
 function tidHtml(o) {
+  if (o.draft) return '';
   if (o.trackId) return 'Tracking ID <b>' + esc(o.trackId) + '</b><button type="button" class="mini" data-copy="' + esc(o.trackId) + '">Copy</button><a class="mini" href="' + esc(trackHref(o.trackId)) + '"' + (CFG.trackUrl ? ' target="_blank" rel="noopener"' : '') + '>Track</a>';
   return String(o.ncmId).startsWith('TEST-') ? '' : '<span class="sub">Tracking ID: not provided by NCM yet</span>';
 }
@@ -305,69 +307,94 @@ function copyText(t) {
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
 }
 document.addEventListener('click', (e) => { const c = e.target.closest('[data-copy]'); if (c) { e.preventDefault(); copyText(c.dataset.copy); } });
-const stClass = (s = '') => (/return/i.test(s) ? 'r' : /delivered/i.test(s) ? 'd' : '');
+
+// ---- orders ----
+const stClass = (s = '') => (/draft/i.test(s) ? 'w' : /return/i.test(s) ? 'r' : /delivered/i.test(s) ? 'd' : '');
+function orderCard(o) {
+  const draft = !!o.draft, test = String(o.ncmId).startsWith('TEST-');
+  const acts = [];
+  if (draft) acts.push('<button type="button" class="primary" data-act="send">Create NCM order</button>');
+  acts.push('<a href="/bill?order=' + enc(o.id) + '" target="_blank">' + (o.bill ? 'View bill' : 'Create bill') + '</a>');
+  acts.push('<button type="button" data-act="edit">Edit</button>', '<button type="button" data-act="again">Order again</button>');
+  if (!draft) acts.push('<button type="button" data-act="note">Message NCM</button>', '<button type="button" data-act="cancel">Request cancel</button>');
+  acts.push('<button type="button" class="danger" data-act="del">Delete</button>');
+  return `<div class="card ord" data-id="${esc(o.id)}">
+    <div class="top"><span>${esc(o.name)}</span><span>${draft ? 'Not sent to NCM' : 'Order ID #' + esc(o.ncmId ?? '-')}</span></div>
+    <div class="tid">${tidHtml(o)}</div>
+    <div class="sub">${esc(o.phone)} · ${esc(o.from)} → ${esc(o.to)} · COD Rs ${o.cod}</div>
+    <div class="sub">${new Date(o.createdAt).toLocaleString()} · ${esc(o.packageType)}${o.weight ? ' · ' + o.weight + ' kg' : ''}</div>
+    <span class="st ${stClass(o.status)}">${esc(o.status)}</span>${test ? ' <span class="st">test order, not at NCM</span>' : ''}${o.bill ? ' <span class="st d">Bill #' + esc(o.bill.no) + (o.bill.grand ? ' · Rs ' + esc(o.bill.grand) : '') + '</span>' : ''}
+    <div class="acts">${acts.join('')}</div>
+    <div class="editbox"></div>
+    <div class="detail"></div></div>`;
+}
 async function loadOrders() {
   try {
-    const { orders, total } = await api('/api/orders?q=' + encodeURIComponent($('q').value));
-    ORDERS = {}; orders.forEach((o) => { ORDERS[o.ncmId] = o; });
-    $('olist').innerHTML = orders.length ? orders.map((o) => `<div class="card ord" data-id="${esc(o.ncmId)}">
-      <div class="top"><span>${esc(o.name)}</span><span>Order ID #${esc(o.ncmId ?? '-')}</span></div>
-      <div class="tid">${tidHtml(o)}</div>
-      <div class="sub">${esc(o.phone)} · ${esc(o.from)} → ${esc(o.to)} · COD Rs ${o.cod}</div>
-      <div class="sub">${new Date(o.createdAt).toLocaleString()} · ${esc(o.packageType)}${o.weight ? ' · ' + o.weight + ' kg' : ''}</div>
-      <span class="st ${stClass(o.status)}">${esc(o.status)}</span>${String(o.ncmId).startsWith('TEST-') ? ' <span class="st">test order, not at NCM</span>' : ''}${o.bill ? ' <span class="st d">Bill #' + esc(o.bill.no) + '</span>' : ''}
-      <div class="acts"><button type="button" data-act="again">Order again</button><a href="/bill?order=${encodeURIComponent(o.ncmId)}" target="_blank">${o.bill ? 'View bill' : 'Create bill'}</a></div>
-      <div class="detail"></div></div>`).join('') : '<div class="card">No orders yet.</div>';
+    const { orders } = await api('/api/orders?q=' + enc($('q').value) + '&filter=' + enc($('ofilter').value));
+    ORDERS = {}; orders.forEach((o) => { ORDERS[o.id] = o; });
+    $('olist').innerHTML = orders.length ? orders.map(orderCard).join('') : '<div class="card">No orders here yet.</div>';
   } catch (e) { if (e.message !== 'login') $('olist').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
 let qTimer; $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadOrders, 300); });
+$('ofilter').addEventListener('change', loadOrders);
 async function refreshAll() {
   const b = $('refreshBtn'); b.disabled = true; b.textContent = 'Checking courier…';
   try { await api('/api/refresh', {}); await loadOrders(); } catch (e) { toast(e.message, false); }
   b.disabled = false; b.textContent = 'Refresh status from courier';
 }
-const OFFER = 'Edit and delete change only this site. NCM has no edit or cancel option in its API, so the note below posts a comment on the order for NCM staff.';
-let toastTimer;
-function toast(msg, ok = true) {
-  let t = $('toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
-  t.textContent = msg; t.className = 'toast ' + (ok ? 'ok' : 'err'); t.style.display = 'block';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.style.display = 'none'), ok ? 5000 : 12000);
-}
 function editForm(o) {
   const f = (k, label, type = 'text') => '<label>' + label + '</label><input data-k="' + k + '" type="' + type + '" value="' + esc(o[k] ?? '') + '">';
   const sel = (k, label, opts) => '<label>' + label + '</label><select data-k="' + k + '">' + opts.map(([v, l]) => '<option value="' + v + '"' + (o[k] === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+  const offer = o.draft ? 'This order is only saved here. Nothing goes to NCM until you tap "Create NCM order".'
+    : 'Edit changes only this site. NCM has no edit option in its API, so tick the box to also post a note on the order for NCM staff.';
   return '<div class="edit">' + sel('deliveryType', 'Delivery type', Object.entries(LABELS)) +
     '<div class="cb" id="efromWrap"><label>Origin branch</label><input id="efrom" autocomplete="off" placeholder="Type to search"><div class="dd hide" id="efromDd"></div></div>' +
     '<div class="cb" id="etoWrap"><label>Destination (branch or area)</label><input id="eto" autocomplete="off" placeholder="Type branch or area"><div class="dd hide" id="etoDd"></div></div>' +
-    f('phone', 'Phone', 'tel') + f('phone2', 'Alternate phone', 'tel') + f('name', 'Customer name') + f('address', 'Customer address') +
+    f('name', 'Customer name') + f('address', 'Customer address') + f('phone', 'Phone number 1', 'tel') + f('phone2', 'Phone number 2 (optional)', 'tel') +
     f('packageType', 'Package type') + f('weight', 'Weight (kg)', 'number') + f('cod', 'COD amount (Rs)', 'number') + f('description', 'Description') +
     sel('priority', 'Priority', ['Normal', 'High', 'Urgent'].map((p) => [p, p])) +
-    '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="notify" checked style="width:auto"> Also tell NCM about the change (as a note)</label>' +
-    '<div class="sub" style="margin:6px 0">' + OFFER + '</div><button class="main" data-act="save">Save changes</button></div>';
+    (o.draft ? '' : '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="notify" checked style="width:auto"> Also tell NCM about the change (as a note)</label>') +
+    '<div class="note" style="margin:6px 0">' + offer + '</div><button type="button" class="main" data-act="save">Save changes</button></div>';
 }
-async function doAction(act, card, order) {
+function sendPanel(o) {
+  const row = (k, v) => '<div class="crow"><span>' + k + '</span><b>' + esc(v || '-') + '</b></div>';
+  return '<div class="edit"><div class="note" style="margin-bottom:6px">' + (CFG.testMode ? 'Test mode: this only makes a test order, nothing reaches NCM.' : 'This creates the real shipment at NCM. It cannot be sent twice.') + '</div>' +
+    row('Customer', o.name + ' · ' + o.phone) + row('Route', o.from + ' → ' + o.to + ' (' + (LABELS[o.deliveryType] || o.deliveryType) + ')') +
+    row('Package', o.packageType + (o.weight ? ' · ' + o.weight + ' kg' : '')) + row('COD', 'Rs ' + (o.cod || 0)) + row('Priority', o.priority) +
+    '<button type="button" class="main" data-act="dosend" style="margin-top:10px">Yes, create NCM order</button></div>';
+}
+async function doAction(act, card, order, btn) {
   const id = card.dataset.id, box = card.querySelector('.editbox');
   const open = (html) => { document.querySelectorAll('.editbox').forEach((x) => { if (x !== box) x.innerHTML = ''; }); box.innerHTML = html; };
   try {
-    if (act === 'edit') {
+    if (act === 'send') open(sendPanel(order));
+    else if (act === 'dosend') {
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending to NCM…'; }
+      try {
+        const r = await api('/api/order/send', { id });
+        const o = r.order;
+        ORDERS[id] = o; card.outerHTML = orderCard(o); // show the sent order right here, with its IDs, until the list is next refreshed
+        toast('Sent. ' + (o.ncmId ? 'Order ID #' + o.ncmId : 'NCM did not return an order ID') + (o.trackId ? ' · Tracking ID ' + o.trackId : ''));
+      } catch (err) { if (btn) { btn.disabled = false; btn.textContent = 'Yes, create NCM order'; } throw err; }
+    } else if (act === 'edit') {
       open(editForm(order));
       setBranch('efrom', order.from || ''); setBranch('eto', order.to || '');
       combo('efrom', false, () => {}); combo('eto', true, () => {});
     } else if (act === 'note') {
-      open('<div class="edit"><label>Message for NCM (posted as a comment on order #' + esc(id) + ')</label><textarea id="noteText" rows="3" placeholder="e.g. Please call the customer before delivery"></textarea><button class="main" data-act="sendnote" style="margin-top:8px">Send to NCM</button></div>');
+      open('<div class="edit"><label>Message for NCM (posted as a comment on order #' + esc(order.ncmId) + ')</label><textarea id="noteText" rows="3" placeholder="e.g. Please call the customer before delivery"></textarea><button type="button" class="main" data-act="sendnote" style="margin-top:8px">Send to NCM</button></div>');
     } else if (act === 'cancel') {
-      open('<div class="edit"><div class="sub" style="margin-bottom:8px">This posts "please cancel and delete this order" as a comment on order #' + esc(id) + '. NCM decides whether it can still be stopped.</div><button class="main" data-act="sendcancel" style="background:var(--bad)">Yes, send cancel request</button></div>');
+      open('<div class="edit"><div class="note" style="margin-bottom:8px">This posts "please cancel and delete this order" as a comment on order #' + esc(order.ncmId) + '. NCM decides whether it can still be stopped.</div><button type="button" class="main" data-act="sendcancel" style="background:var(--bad)">Yes, send cancel request</button></div>');
     } else if (act === 'del') {
-      open('<div class="edit"><div class="sub" style="margin-bottom:8px">Remove this order from your list? It does NOT cancel it at NCM. Use "Request cancel" for that.</div><button class="main" data-act="confirmdel" style="background:var(--bad)">Yes, remove from list</button></div>');
+      open('<div class="edit"><div class="note" style="margin-bottom:8px">Remove this order from your list? It does NOT cancel it at NCM. Use "Request cancel" for that.' + (CFG.deleteEnabled ? '' : ' <b>Deleting is switched off until the owner sets DELETE_PASSKEY on the server.</b>') + '</div><label>Delete passkey</label><input id="delKey" type="password" autocomplete="off" placeholder="Owner passkey"><button type="button" class="main" data-act="confirmdel" style="background:var(--bad);margin-top:8px">Yes, remove from list</button></div>');
     } else if (act === 'sendnote' || act === 'sendcancel') {
       const text = act === 'sendcancel' ? 'Vendor request: please cancel and delete this order.' : ($('noteText').value || '').trim();
       if (!text) return toast('Write a message first', false);
-      const r = await api('/api/order/note', { ncmId: id, text });
+      const r = await api('/api/order/note', { id, text });
       toast(r.note || 'Posted on the NCM order as a comment.'); box.innerHTML = '';
     } else if (act === 'confirmdel') {
-      await api('/api/order/delete', { ncmId: id }); toast('Removed from your list.'); await loadOrders();
+      await api('/api/order/delete', { id, passkey: $('delKey').value }); toast('Removed from your list.'); await loadOrders();
     } else if (act === 'save') {
-      const body = { ncmId: id };
+      const body = { id };
       card.querySelectorAll('.edit [data-k]').forEach((el) => (body[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value));
       body.from = bv('efrom'); body.to = bv('eto');
       if (!body.from || !body.to) return toast('Pick origin and destination from the list that appears while typing', false);
@@ -380,54 +407,54 @@ async function doAction(act, card, order) {
 $('olist').addEventListener('click', async (e) => {
   const card = e.target.closest('.ord'); if (!card) return;
   if (e.target.closest('a, [data-copy]')) return; // links and copy buttons do their own thing
+  const id = card.dataset.id, ord = ORDERS[id] || {};
   const act = e.target.closest('[data-act]');
-  const ord = card._order || ORDERS[card.dataset.id] || {};
-  if (act) { if (act.dataset.act === 'again') fillFrom(ord); else doAction(act.dataset.act, card, ord); return; }
-  if (e.target.closest('.detail')) return; // clicks inside the opened panel don't collapse it
+  if (act) { if (act.dataset.act === 'again') fillFrom(ord); else doAction(act.dataset.act, card, ord, act); return; }
+  if (e.target.closest('.detail, .editbox')) return; // clicks inside an opened panel don't collapse the card
   const box = card.querySelector('.detail');
   if (box.innerHTML) { box.innerHTML = ''; return; }
   box.textContent = 'Loading tracking…';
   try {
-    const t = await api('/api/track?id=' + encodeURIComponent(card.dataset.id));
-    card._order = t.order; ORDERS[card.dataset.id] = t.order;
+    const t = await api('/api/track?id=' + enc(id));
+    ORDERS[id] = t.order;
     card.querySelector('.tid').innerHTML = tidHtml(t.order);
     const fmt = (s) => (s && !isNaN(new Date(s)) ? new Date(s).toLocaleString() : esc(s || ''));
     box.innerHTML = `<ul class="tl">${t.history.map((h) => `<li>${esc(h.status)}<small>${fmt(h.time)}</small></li>`).join('') || '<li>No updates yet</li>'}</ul>` +
       (t.comments.length ? `<div class="sub" style="margin-top:6px"><b>Courier comments</b></div><ul class="tl">${t.comments.map((c) => `<li>${esc(c.text)}<small>${esc(c.by || '')} ${fmt(c.time)}</small></li>`).join('')}</ul>` : '') +
-      `<div class="sub" style="margin-top:6px">Address: ${esc(t.order.address)}</div>` +
-      `<div class="acts"><button data-act="edit">Edit</button><button data-act="note">Message NCM</button><button data-act="cancel">Request cancel</button><button data-act="del" class="danger">Delete from list</button></div><div class="editbox"></div>`;
+      `<div class="sub" style="margin-top:6px">Address: ${esc(t.order.address)}</div>`;
     const pill = card.querySelector('.st'); pill.textContent = t.order.status; pill.className = 'st ' + stClass(t.order.status);
   } catch (err) { box.innerHTML = `<div class="msg err" style="margin:8px 0 0">${esc(err.message)}</div>`; }
 });
 
+// ---- phone history (orders made through this site) + saved customer autofill ----
 let timer;
-$('phone').addEventListener('input', () => {
-  clearTimeout(timer);
+async function loadHist() {
   const p = $('phone').value.replace(/\D/g, '');
   if (p.length < 10) { $('hist').innerHTML = ''; return; }
-  timer = setTimeout(async () => {
-    $('hist').textContent = 'Checking history…';
-    try {
-      const h = await api('/api/history?phone=' + p);
-      if (!h.orders.length) { $('hist').innerHTML = '<span class="chip">New customer</span>'; return; }
-      if (!$('name').value && h.lastName) $('name').value = h.lastName;
-      if (!$('address').value && h.lastAddress) $('address').value = h.lastAddress;
-      $('hist').innerHTML = `<div class="chips"><span class="chip d">${h.delivered} delivered</span><span class="chip r">${h.returned} returned</span><span class="chip">${h.other} in progress</span></div>
-        <ul>${h.orders.map((o, i) => `<li><span>${new Date(o.createdAt).toLocaleDateString()} · ${esc(o.packageType)} · Rs ${o.cod} · ${esc(o.status)}</span><button type="button" class="mini" data-reuse="${i}">Order again</button></li>`).join('')}</ul>`;
-      HIST = h.orders;
-    } catch (e) { $('hist').textContent = ''; }
-  }, 400);
-});
+  $('hist').textContent = 'Checking history…';
+  try {
+    const h = await api('/api/history?phone=' + p);
+    if ($('phone').value.replace(/\D/g, '') !== p) return; // the number changed while we were asking
+    const c = h.customer;
+    if (c) { if (!$('name').value && c.name) $('name').value = c.name; if (!$('address').value && c.address) $('address').value = c.address; if (!$('phone2').value && c.phone2) $('phone2').value = c.phone2; }
+    if (!h.orders.length) { $('hist').innerHTML = '<span class="chip">' + (c ? 'Saved customer, no orders yet' : 'New customer') + '</span>'; return; }
+    if (!$('name').value && h.lastName) $('name').value = h.lastName;
+    if (!$('address').value && h.lastAddress) $('address').value = h.lastAddress;
+    $('hist').innerHTML = `<div class="chips"><span class="chip d">${h.delivered} delivered</span><span class="chip r">${h.returned} returned</span><span class="chip">${h.other} in progress</span></div>
+      <ul>${h.orders.map((o, i) => `<li><span>${new Date(o.createdAt).toLocaleDateString()} · ${esc(o.packageType)} · Rs ${o.cod} · ${esc(o.status)}</span><button type="button" class="mini" data-reuse="${i}">Order again</button></li>`).join('')}</ul>`;
+    HIST = h.orders;
+  } catch (e) { $('hist').textContent = ''; }
+}
+$('phone').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHist, 400); });
+$('hist').addEventListener('click', (e) => { const r = e.target.closest('[data-reuse]'); if (r) { e.preventDefault(); fillFrom(HIST[+r.dataset.reuse] || {}); } });
 
-// ---- create order ----
+// ---- save a new order (a draft: nothing goes to NCM here) ----
 function readForm() {
-  const billOn = $('billOn').checked;
   return {
     deliveryType: dtype(), from: bv('from'), to: bv('to'),
     phone: $('phone').value, phone2: $('phone2').value, name: $('name').value.trim(), address: $('address').value.trim(),
     packageType: $('packageType').value.trim(), weight: $('weight').value, cod: $('cod').value, description: $('description').value,
     priority: document.querySelector('input[name=pr]:checked').value,
-    bill: billOn ? { on: true, no: $('billNo').value.trim(), date: todayBS(), rate: $('billRate').value, qty: 1, discount: 0 } : { on: false },
   };
 }
 function formProblem(b) {
@@ -435,64 +462,121 @@ function formProblem(b) {
   if (!b.name || !b.address) return 'Customer name and address are required.';
   if (String(b.phone).replace(/\D/g, '').length < 10) return 'Enter a valid 10-digit phone number.';
   if (!b.packageType) return 'Enter the package type.';
-  if (b.bill.on && !b.bill.no) return 'Enter a bill number, or switch the bill off.';
   return '';
 }
 function createdHtml(o) {
-  const test = String(o.ncmId).startsWith('TEST-'), link = '/bill?order=' + encodeURIComponent(o.ncmId);
-  return '<div class="msg ok"><div>Order created' + (test ? ' (test, not sent to NCM)' : '') + '</div>' +
-    '<div class="big2">Order ID #' + esc(o.ncmId ?? 'n/a') + '</div>' +
-    '<div class="tid">' + tidHtml(o) + '</div>' +
-    '<div style="margin-top:6px">' + (o.bill ? 'Bill #' + esc(o.bill.no) + ' saved · <a class="bill" href="' + link + '" target="_blank">View / print bill →</a>'
-      : '<a class="bill" href="' + link + '" target="_blank">Make a bill for this order →</a>') + '</div></div>';
+  return '<div class="msg ok"><div class="big2">Order saved</div><div>It is NOT at NCM yet. Open Orders and tap <b>Create NCM order</b> when you are ready.</div>' +
+    '<div style="margin-top:6px"><a class="bill" href="#" onclick="$(\'ofilter\').value=\'draft\'; show(\'orders\'); return false">Go to Orders to send it →</a></div></div>';
 }
 function openConfirm() {
   const b = readForm();
   const row = (k, v) => '<div class="crow"><span>' + k + '</span><b>' + esc(v || '-') + '</b></div>';
   $('confirmBody').innerHTML = row('Customer', b.name) + row('Phone', b.phone + (b.phone2 ? ' / ' + b.phone2 : '')) + row('Address', b.address) +
     row('Route', (b.from || '?') + ' → ' + (b.to || '?') + ' (' + LABELS[b.deliveryType] + ')') + row('Package', b.packageType + (b.weight ? ' · ' + b.weight + ' kg' : '')) +
-    row('COD', 'Rs ' + (b.cod || 0)) + row('Priority', b.priority) + row('Note', b.description) +
-    row('Bill', b.bill.on ? '#' + b.bill.no + ' (handling fee Rs ' + b.bill.rate + ')' : 'No bill');
+    row('COD', 'Rs ' + (b.cod || 0)) + row('Priority', b.priority) + row('Note', b.description);
   $('confirmBox').classList.remove('hide');
 }
 function closeConfirm() { $('confirmBox').classList.add('hide'); }
-// one tap on "Order again": fill the whole form from an earlier order, then ask to confirm
-function fillFrom(o) {
-  show('book');
-  const setBr = (id, name) => { if (BR.some((x) => x.name === name)) setBranch(id, name); else { $(id).value = name || ''; $(id).dataset.v = ''; } };
-  const dt = document.querySelector('input[name=dt][value="' + o.deliveryType + '"]'); if (dt) dt.checked = true;
-  const pr = document.querySelector('input[name=pr][value="' + o.priority + '"]'); if (pr) pr.checked = true;
-  setBr('from', o.from); setBr('to', o.to); pickedArea = '';
-  ['phone', 'phone2', 'name', 'address', 'packageType', 'description'].forEach((k) => { $(k).value = o[k] || ''; });
-  $('weight').value = o.weight || ''; $('cod').value = o.cod || 0;
-  $('billNo').value = nextBillNo();
-  $('result').innerHTML = '';
-  updateRate(); updateAreas();
-  window.scrollTo({ top: 0 });
-  openConfirm();
-}
-$('hist').addEventListener('click', (e) => { const r = e.target.closest('[data-reuse]'); if (r) { e.preventDefault(); fillFrom(HIST[+r.dataset.reuse] || {}); } });
-
 async function submitOrder() {
   closeConfirm();
   const btn = $('go'); if (btn.disabled) return;
   const body = readForm(), problem = formProblem(body);
   if (problem) { $('result').innerHTML = '<div class="msg err">' + esc(problem) + '</div>'; window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-  btn.disabled = true; btn.textContent = 'Creating…';
+  btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const { order } = await api('/api/orders', body);
     lsSet('lastFrom', body.from);
-    if (order.bill) markBillUsed(order.bill.no);
     $('result').innerHTML = createdHtml(order);
     ['phone', 'phone2', 'name', 'address', 'packageType', 'weight', 'description'].forEach((i) => ($(i).value = ''));
-    $('cod').value = 0; $('hist').innerHTML = ''; $('billNo').value = nextBillNo();
+    $('cod').value = 0; $('hist').innerHTML = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     if (err.message !== 'login') { $('result').innerHTML = '<div class="msg err">' + esc(err.message) + '</div>'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
   }
-  btn.disabled = false; btn.textContent = 'Create order';
+  btn.disabled = false; btn.textContent = 'Save order';
 }
 $('f').addEventListener('submit', (e) => { e.preventDefault(); submitOrder(); });
+
+// Fill the form from an order or a customer. Anything not given is cleared.
+function fillForm(o) {
+  const setBr = (id, name) => { if (BR.some((x) => x.name === name)) setBranch(id, name); else { $(id).value = name || ''; $(id).dataset.v = ''; } };
+  if (o.deliveryType) { const dt = document.querySelector('input[name=dt][value="' + o.deliveryType + '"]'); if (dt) dt.checked = true; }
+  if (o.priority) { const pr = document.querySelector('input[name=pr][value="' + o.priority + '"]'); if (pr) pr.checked = true; }
+  setBr('from', o.from); setBr('to', o.to); pickedArea = '';
+  ['phone', 'phone2', 'name', 'address', 'packageType', 'description'].forEach((k) => { $(k).value = o[k] || ''; });
+  $('weight').value = o.weight || ''; $('cod').value = o.cod || 0;
+  $('result').innerHTML = ''; $('hist').innerHTML = '';
+  updateRate(); updateAreas(); loadHist();
+  window.scrollTo({ top: 0 });
+}
+// one tap on "Order again": fill the whole form from an earlier order, then ask to confirm (with a way back to edit)
+function fillFrom(o) { show('book'); fillForm(o); openConfirm(); }
+// from a saved customer: fill who they are (and where they usually order to), leave the package for you to type
+function startOrderFor(c) {
+  show('book');
+  fillForm({ name: c.name, address: c.address, phone: c.phone, phone2: c.phone2, ...(c.last ? { deliveryType: c.last.deliveryType, from: c.last.from, to: c.last.to, priority: c.last.priority } : {}) });
+  $('packageType').focus();
+  toast('Customer details filled in. Add the package details, then tap Save order.');
+}
+
+// ---- customers ----
+async function loadCustomers() {
+  try {
+    const { customers } = await api('/api/customers?q=' + enc($('cq').value));
+    CUST = {}; customers.forEach((c) => { CUST[c.id] = c; });
+    $('clist').innerHTML = customers.length ? customers.map(custCard).join('') : '<div class="card">No customers yet. They are saved automatically when you save an order, or add one with the button above.</div>';
+  } catch (e) { if (e.message !== 'login') $('clist').innerHTML = '<div class="msg err">' + esc(e.message) + '</div>'; }
+}
+function custCard(c) {
+  const s = c.stats || { orders: 0, delivered: 0, returned: 0 };
+  return '<div class="card cust" data-id="' + esc(c.id) + '"><div class="top"><span>' + esc(c.name) + '</span><span>' + esc(c.phone) + '</span></div>' +
+    '<div class="sub">' + (esc(c.address) || 'No address saved') + (c.phone2 ? ' · Phone 2: ' + esc(c.phone2) : '') + '</div>' +
+    '<div class="chips" style="margin-top:6px"><span class="chip">' + s.orders + ' orders</span><span class="chip d">' + s.delivered + ' delivered</span><span class="chip r">' + s.returned + ' returned</span></div>' +
+    '<div class="acts"><button type="button" data-cact="new">New order</button>' + (c.last ? '<button type="button" data-cact="repeat">Repeat last order</button>' : '') +
+    '<button type="button" data-cact="edit">Edit</button><button type="button" data-cact="hist">History</button><button type="button" data-cact="del" class="danger">Delete</button></div><div class="cdetail"></div></div>';
+}
+function custForm(c, saveAct) {
+  const f = (k, label, type = 'text') => '<label>' + label + '</label><input data-ck="' + k + '" type="' + type + '" value="' + esc(c[k] ?? '') + '">';
+  return '<div class="edit">' + f('name', 'Customer name') + f('address', 'Customer address') + f('phone', 'Phone number 1', 'tel') + f('phone2', 'Phone number 2 (optional)', 'tel') +
+    '<button type="button" class="main" data-cact="' + saveAct + '" style="margin-top:10px">Save customer</button></div>';
+}
+async function custAction(act, c, box, btn) {
+  try {
+    if (act === 'new') startOrderFor(c);
+    else if (act === 'repeat') fillFrom({ ...c.last, name: c.name, address: c.address, phone: c.phone, phone2: c.phone2 });
+    else if (act === 'edit') box.innerHTML = custForm(c, 'save');
+    else if (act === 'save' || act === 'addsave') {
+      const body = act === 'save' ? { id: c.id } : {};
+      box.querySelectorAll('[data-ck]').forEach((el) => { body[el.dataset.ck] = el.value; });
+      await api('/api/customers', body);
+      toast('Customer saved.'); if (act === 'addsave') box.innerHTML = '';
+      await loadCustomers();
+    } else if (act === 'hist') {
+      if (box.innerHTML) { box.innerHTML = ''; return; }
+      box.textContent = 'Loading…';
+      const h = await api('/api/history?phone=' + c.phone);
+      box._orders = h.orders;
+      box.innerHTML = h.orders.length
+        ? '<ul class="hist" style="margin-top:8px;list-style:none;padding:0">' + h.orders.map((o, i) => '<li><span>' + new Date(o.createdAt).toLocaleDateString() + ' · ' + esc(o.packageType) + ' · Rs ' + o.cod + ' · ' + esc(o.status) + '</span><button type="button" class="mini" data-cact="reuse" data-i="' + i + '">Order again</button></li>').join('') + '</ul>'
+        : '<div class="sub" style="margin-top:8px">No orders yet.</div>';
+    } else if (act === 'reuse') {
+      fillFrom({ ...(box._orders || [])[+btn.dataset.i], name: c.name, address: c.address, phone: c.phone, phone2: c.phone2 });
+    } else if (act === 'del') {
+      box.innerHTML = '<div class="edit"><div class="note" style="margin-bottom:8px">Delete this customer? Their past orders stay in Orders.' + (CFG.deleteEnabled ? '' : ' <b>Deleting is switched off until the owner sets DELETE_PASSKEY on the server.</b>') + '</div><label>Delete passkey</label><input id="cdelKey" type="password" autocomplete="off" placeholder="Owner passkey"><button type="button" class="main" data-cact="confirmdel" style="background:var(--bad);margin-top:8px">Yes, delete customer</button></div>';
+    } else if (act === 'confirmdel') {
+      await api('/api/customers/delete', { id: c.id, passkey: $('cdelKey').value });
+      toast('Customer deleted.'); await loadCustomers();
+    }
+  } catch (err) { if (err.message !== 'login') toast(err.message, false); }
+}
+$('clist').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cact]'); if (!b) return;
+  const card = b.closest('.cust'), c = card && CUST[card.dataset.id]; if (!c) return;
+  custAction(b.dataset.cact, c, card.querySelector('.cdetail'), b);
+});
+$('addCust').addEventListener('click', () => { $('addBox').innerHTML = $('addBox').innerHTML ? '' : custForm({}, 'addsave'); });
+$('addBox').addEventListener('click', (e) => { const b = e.target.closest('[data-cact]'); if (b) custAction(b.dataset.cact, {}, $('addBox'), b); });
+let cqTimer; $('cq').addEventListener('input', () => { clearTimeout(cqTimer); cqTimer = setTimeout(loadCustomers, 300); });
 
 fetch('/api/config').then((r) => (r.ok ? start() : showLogin()));
 </script>
