@@ -31,14 +31,22 @@ async function kv(cmd) {
   if (!r.ok || d.error) throw new Error('Storage error: ' + (d.error || r.status));
   return d.result;
 }
-async function loadOrders() {
-  if (KV_URL) { const v = await kv(['GET', 'orders']); return v ? JSON.parse(v) : []; }
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return []; }
+const FILES = { orders: 'orders.json', customers: 'customers.json', meta: 'meta.json' };
+async function loadList(name) {
+  if (KV_URL) { const v = await kv(['GET', name]); return v ? JSON.parse(v) : []; }
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', FILES[name]), 'utf8')); } catch { return []; }
 }
-async function saveOrders(o) {
-  if (KV_URL) return void (await kv(['SET', 'orders', JSON.stringify(o)]));
-  fs.writeFileSync(DATA_FILE, JSON.stringify(o, null, 1));
+async function saveList(name, v) {
+  if (KV_URL) return void (await kv(['SET', name, JSON.stringify(v)]));
+  fs.writeFileSync(path.join(__dirname, 'data', FILES[name]), JSON.stringify(v, null, 1));
 }
+// Every order gets its own id on this site. Drafts have no NCM id yet, so the site id is what identifies them.
+function ensureIds(all) { let changed = false; for (const o of all) if (!o.id) { o.id = o.ncmId != null && o.ncmId !== '' ? 'n' + o.ncmId : crypto.randomUUID().slice(0, 8); changed = true; } return changed; }
+async function loadOrders() { const all = await loadList('orders'); if (ensureIds(all)) await saveList('orders', all); return all; }
+const saveOrders = (v) => saveList('orders', v);
+const byId = (all, id) => { id = String(id ?? ''); return all.find((x) => x.id === id) || all.find((x) => x.ncmId != null && String(x.ncmId) === id); };
+const sending = new Set(); // order ids currently being sent to NCM
+const loadCustomers = () => loadList('customers'), saveCustomers = (v) => saveList('customers', v);
 
 // ---------- tiny session cookie ----------
 const sign = (v) => crypto.createHmac('sha256', SECRET).update(v).digest('hex');
@@ -49,7 +57,23 @@ function isAuthed(req) {
   const [exp, sig] = m[1].split('.');
   return !!exp && sig === sign(exp) && Number(exp) > Date.now();
 }
-let failedLogins = {};
+// Wrong-attempt limits, per visitor (the proxy adds the real address last in x-forwarded-for)
+const clientIp = (req) => { const x = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean); return x.length ? x[x.length - 1] : req.socket.remoteAddress; };
+const attempts = { login: new Map(), key: new Map() };
+const WINDOW = 15 * 60e3;
+function isLocked(kind, ip) { const a = attempts[kind].get(ip); return !!a && a.n >= 10 && Date.now() - a.t < WINDOW; }
+function noteFail(kind, ip) { const a = attempts[kind].get(ip), now = Date.now(); attempts[kind].set(ip, a && now - a.t < WINDOW ? { n: a.n + 1, t: a.t } : { n: 1, t: now }); }
+// A separate passkey, set by the owner as DELETE_PASSKEY, protects deleting. If it isn't set, deleting is switched off.
+const DELETE_PASSKEY = process.env.DELETE_PASSKEY || '';
+function checkDeleteKey(req, key) {
+  if (!DELETE_PASSKEY) return { code: 403, error: 'Deleting is switched off. The owner must set DELETE_PASSKEY on the server.' };
+  const ip = clientIp(req);
+  if (isLocked('key', ip)) return { code: 429, error: 'Too many wrong passkeys. Try again in 15 minutes.' };
+  const hash = (s) => crypto.createHash('sha256').update(String(s ?? '')).digest();
+  if (!crypto.timingSafeEqual(hash(key), hash(DELETE_PASSKEY))) { noteFail('key', ip); return { code: 403, error: 'Wrong delete passkey' }; }
+  attempts.key.delete(ip);
+  return null;
+}
 
 // ---------- NCM calls ----------
 async function ncm(method, p, body) {
@@ -141,14 +165,56 @@ function findKey(obj, re, depth = 0) {
 async function fetchTrackId(ncmId) {
   try { return findKey(await ncm('GET', '/api/v1/order?id=' + encodeURIComponent(ncmId)), /track/i); } catch { return ''; }
 }
+// A bill has one or more products. Older single-line bills (particulars/qty/rate) are still understood.
 function makeBill(b, o) {
   if (!b || b.on === false) return null;
-  const qty = Math.max(1, Number(b.qty) || 1), rate = Math.max(0, Number(b.rate) || 0), discount = Math.max(0, Number(b.discount) || 0);
-  const total = qty * rate;
-  return { no: clean(b.no, 40), date: clean(b.date, 20), particulars: clean(b.particulars, 200) || ('Handling fee for ' + o.packageType),
-    qty, rate, discount, total, grand: Math.max(0, total - discount) };
+  const src = Array.isArray(b.items) ? b.items : [{ name: b.particulars, qty: b.qty, rate: b.rate }];
+  const items = src.slice(0, 30).map((x) => {
+    const qty = Number(x && x.qty) > 0 ? Number(x.qty) : 1, rate = Math.max(0, Number(x && x.rate) || 0);
+    return { name: clean(x && x.name, 200), qty, rate, amount: Math.round(qty * rate * 100) / 100 };
+  }).filter((x) => x.name || x.rate > 0);
+  const total = Math.round(items.reduce((s, x) => s + x.amount, 0) * 100) / 100;
+  const discount = Math.min(total, Math.max(0, Number(b.discount) || 0));
+  return { no: clean(b.no, 40), date: clean(b.date, 20), items, total, discount, grand: Math.round((total - discount) * 100) / 100 };
+}
+const phone10 = (v) => digits(v).slice(-10);
+function snapshot(o) { return { deliveryType: o.deliveryType, from: o.from, to: o.to, packageType: o.packageType, weight: o.weight || 0, cod: o.cod || 0, description: o.description || '', priority: o.priority || 'Normal' }; }
+// Saves/updates the customer behind an order. The newest order's name, address and alternate phone win.
+function upsertCustomer(list, o, when = new Date().toISOString()) {
+  const p = phone10(o.phone); if (p.length < 10) return;
+  let c = list.find((x) => phone10(x.phone) === p || (x.phone2 && phone10(x.phone2) === p));
+  if (!c) { c = { id: crypto.randomUUID(), createdAt: when }; list.push(c); }
+  Object.assign(c, { name: o.name, address: o.address, phone: c.phone || o.phone, phone2: o.phone2 || c.phone2 || '', last: snapshot(o), lastOrderAt: when, updatedAt: when });
+}
+function statsByPhone(orders) {
+  const m = new Map();
+  const add = (p, o) => { if (p.length < 10) return; let s = m.get(p); if (!s) m.set(p, (s = { orders: 0, delivered: 0, returned: 0 })); s.orders++; const k = kind(o.status); if (k === 'delivered') s.delivered++; else if (k === 'returned') s.returned++; };
+  for (const o of orders) { const a = phone10(o.phone), b = phone10(o.phone2); add(a, o); if (b && b !== a) add(b, o); }
+  return m;
 }
 const cleanWeight = (v) => Math.min(1000, Math.max(0, Math.round((Number(v) || 0) * 100) / 100));
+const cleanOrder = (b) => ({
+  deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60),
+  name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
+  packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)),
+  description: clean(b.description, 300), priority: clean(b.priority, 10), weight: cleanWeight(b.weight),
+});
+const orderProblem = (o) =>
+  !DELIVERY_TYPES.includes(o.deliveryType) ? 'Choose a delivery type' :
+  !o.from || !o.to ? 'Choose origin and destination' :
+  !o.name || !o.address ? 'Customer name and address are required' :
+  o.phone.length < 10 ? 'Enter a valid 10-digit phone number' :
+  o.phone2 && o.phone2.length < 10 ? 'Phone number 2 must be 10 digits, or leave it empty' :
+  !o.packageType ? 'Enter the package type' :
+  !PRIORITIES.includes(o.priority) ? 'Choose a priority' : '';
+// NCM has no priority field, so priority + description go into the instruction text
+function ncmPayload(o) {
+  const instruction = [o.priority !== 'Normal' ? '[' + o.priority.toUpperCase() + ']' : '', o.description].filter(Boolean).join(' ');
+  const p = { name: o.name, phone: o.phone, phone2: o.phone2 || undefined, cod_charge: String(o.cod), address: o.address,
+    fbranch: o.from, branch: o.to, package: o.packageType, vref_id: VREF_ID, instruction, delivery_type: o.deliveryType };
+  if (o.weight > 0) p.weight = String(o.weight);
+  return p;
+}
 const FINAL = /deliver|return/i;
 const kind = (s = '') => (/return/i.test(s) ? 'returned' : /delivered/i.test(s) ? 'delivered' : 'other');
 
@@ -172,10 +238,11 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   try {
     if (url.pathname === '/api/login' && req.method === 'POST') {
-      const ip = req.socket.remoteAddress;
-      if ((failedLogins[ip] || 0) >= 10) return send(res, 429, { error: 'Too many attempts. Try later.' });
+      const ip = clientIp(req);
+      if (isLocked('login', ip)) return send(res, 429, { error: 'Too many attempts. Try again in 15 minutes.' });
       const { passcode } = await readBody(req);
-      if (passcode !== PASSCODE) { failedLogins[ip] = (failedLogins[ip] || 0) + 1; return send(res, 401, { error: 'Wrong passcode' }); }
+      if (passcode !== PASSCODE) { noteFail('login', ip); return send(res, 401, { error: 'Wrong passcode' }); }
+      attempts.login.delete(ip);
       return send(res, 200, { ok: true }, { 'Set-Cookie': `sess=${makeSession()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000` });
     }
     if (url.pathname === '/api/logout') return send(res, 200, { ok: true }, { 'Set-Cookie': 'sess=; Path=/; Max-Age=0' });
@@ -183,7 +250,7 @@ http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) {
       if (!isAuthed(req)) return send(res, 401, { error: 'login' });
 
-      if (url.pathname === '/api/config') return send(res, 200, { vref: VREF_ID, testMode: TEST_MODE, deliveryTypes: DELIVERY_TYPES, priorities: PRIORITIES, trackUrl: TRACK_URL });
+      if (url.pathname === '/api/config') return send(res, 200, { vref: VREF_ID, testMode: TEST_MODE, deliveryTypes: DELIVERY_TYPES, priorities: PRIORITIES, trackUrl: TRACK_URL, deleteEnabled: !!DELETE_PASSKEY });
       if (url.pathname === '/api/branches') return send(res, 200, { branches: await getBranches() });
       if (url.pathname === '/api/branchdata') return send(res, 200, { branches: (await getBranchObjs()).map((b) => ({ name: b.name, district: b.district || '', areas: b.areas || [] })) });
 
@@ -217,56 +284,66 @@ http.createServer(async (req, res) => {
           if (!FINAL.test(o.status || '')) { const s = await statusOf(o); if (s !== o.status) { o.status = s; changed = true; } }
         }
         if (changed) await saveOrders(all);
+        const cust = (await loadCustomers()).find((x) => phone10(x.phone) === p || (x.phone2 && phone10(x.phone2) === p));
         const orders = mine.slice().reverse().slice(0, 20);
         const count = (k) => mine.filter((o) => kind(o.status) === k).length;
-        return send(res, 200, { orders, delivered: count('delivered'), returned: count('returned'), other: count('other'), lastName: orders[0]?.name, lastAddress: orders[0]?.address });
+        return send(res, 200, { orders, delivered: count('delivered'), returned: count('returned'), other: count('other'), lastName: orders[0]?.name, lastAddress: orders[0]?.address, customer: cust ? { name: cust.name, address: cust.address, phone2: cust.phone2 || '' } : null });
       }
 
       if (url.pathname === '/api/orders' && req.method === 'POST') {
-        const b = await readBody(req);
-        const o = {
-          deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60),
-          name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
-          packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)),
-          description: clean(b.description, 300), priority: clean(b.priority, 10), weight: cleanWeight(b.weight),
-        };
-        const err =
-          !DELIVERY_TYPES.includes(o.deliveryType) ? 'Choose a delivery type' :
-          !o.from || !o.to ? 'Choose origin and destination' :
-          !o.name || !o.address ? 'Customer name and address are required' :
-          o.phone.length < 10 ? 'Enter a valid 10-digit phone number' :
-          !o.packageType ? 'Enter the package type' :
-          !PRIORITIES.includes(o.priority) ? 'Choose a priority' :
-          b.bill && b.bill.on && !clean(b.bill.no, 40) ? 'Enter a bill number, or switch the bill off' : '';
+        // Saving only keeps the order on this site as a draft. It is sent to NCM later, from the Orders tab.
+        const o = cleanOrder(await readBody(req));
+        const err = orderProblem(o);
         if (err) return send(res, 400, { error: err });
-
-        // NCM has no priority field, so priority + description go into the instruction text
-        const instruction = [o.priority !== 'Normal' ? `[${o.priority.toUpperCase()}]` : '', o.description].filter(Boolean).join(' ');
-        const payload = {
-          name: o.name, phone: o.phone, phone2: o.phone2 || undefined, cod_charge: String(o.cod), address: o.address,
-          fbranch: o.from, branch: o.to, package: o.packageType, vref_id: VREF_ID,
-          instruction, delivery_type: o.deliveryType,
-        };
-        if (o.weight > 0) payload.weight = String(o.weight);
-        let ncmId = null, status = 'Created', trackId = '';
-        if (TEST_MODE) { ncmId = 'TEST-' + Date.now().toString().slice(-6); status = 'Test order (not sent to NCM)'; }
-        else {
-          const r = await ncm('POST', '/api/v1/order/create', payload);
-          ncmId = r.orderid ?? r.order_id ?? r.id ?? (r.data && (r.data.orderid ?? r.data.id)) ?? (findKey(r, /^order_?id$/i) || null);
-          status = 'Pickup Order Created';
-          trackId = findKey(r, /track/i);
-          if (!trackId && ncmId) trackId = await fetchTrackId(ncmId);
-        }
         const all = await loadOrders();
-        const rec = { ...o, ncmId, trackId, status, createdAt: new Date().toISOString() };
-        const bill = makeBill(b.bill, o);
-        if (bill) rec.bill = bill;
+        const rec = { id: crypto.randomUUID().slice(0, 8), ...o, ncmId: null, trackId: '', draft: true, status: 'Draft (not sent to NCM)', createdAt: new Date().toISOString() };
         all.push(rec); await saveOrders(all);
+        try { const cs = await loadCustomers(); upsertCustomer(cs, rec); await saveCustomers(cs); } catch (e) { console.error('customer save failed:', e.message); }
         return send(res, 200, { ok: true, order: rec });
       }
 
+      if (url.pathname === '/api/lastbill') {
+        const all = await loadOrders();
+        for (let i = all.length - 1; i >= 0; i--) if (all[i].bill && all[i].bill.no) return send(res, 200, { no: all[i].bill.no });
+        return send(res, 200, { no: '' });
+      }
+
+      if (url.pathname === '/api/customers' && req.method === 'GET') {
+        const cs = await loadCustomers(), orders = await loadOrders();
+        if (!(await loadList('meta')).length) { // first time: build the list from orders placed so far (oldest first, so the newest wins)
+          for (const o of orders) upsertCustomer(cs, o, o.createdAt);
+          await saveCustomers(cs); await saveList('meta', [{ backfilled: new Date().toISOString() }]);
+        }
+        const q = clean(url.searchParams.get('q'), 60).toLowerCase(), st = statsByPhone(orders);
+        let list = q ? cs.filter((c) => [c.name, c.phone, c.phone2, c.address].join(' ').toLowerCase().includes(q)) : cs.slice();
+        list.sort((a, b) => String(b.lastOrderAt || b.createdAt).localeCompare(String(a.lastOrderAt || a.createdAt)));
+        const empty = { orders: 0, delivered: 0, returned: 0 };
+        return send(res, 200, { total: list.length, customers: list.slice(0, 200).map((c) => ({ ...c, stats: st.get(phone10(c.phone)) || (c.phone2 && st.get(phone10(c.phone2))) || empty })) });
+      }
+      if (url.pathname === '/api/customers' && req.method === 'POST') {
+        const b = await readBody(req);
+        const c0 = { name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2) };
+        if (!c0.name || phone10(c0.phone).length < 10) return send(res, 400, { error: 'A name and a 10-digit phone number are required' });
+        if (c0.phone2 && c0.phone2.length < 10) return send(res, 400, { error: 'Phone number 2 must be 10 digits, or leave it empty' });
+        const cs = await loadCustomers(), now = new Date().toISOString();
+        const dup = cs.find((x) => x.id !== b.id && (phone10(x.phone) === phone10(c0.phone) || (x.phone2 && phone10(x.phone2) === phone10(c0.phone))));
+        if (dup) return send(res, 400, { error: 'A customer with this phone number already exists (' + dup.name + ')' });
+        if (b.id) { const c = cs.find((x) => x.id === b.id); if (!c) return send(res, 404, { error: 'Customer not found' }); Object.assign(c, c0, { updatedAt: now }); }
+        else cs.push({ id: crypto.randomUUID(), ...c0, createdAt: now, updatedAt: now });
+        await saveCustomers(cs);
+        return send(res, 200, { ok: true });
+      }
+      if (url.pathname === '/api/customers/delete' && req.method === 'POST') {
+        const b = await readBody(req);
+        const bad = checkDeleteKey(req, b.passkey); if (bad) return send(res, bad.code, { error: bad.error });
+        const cs = await loadCustomers();
+        if (!cs.some((x) => x.id === b.id)) return send(res, 404, { error: 'Customer not found' });
+        await saveCustomers(cs.filter((x) => x.id !== b.id));
+        return send(res, 200, { ok: true });
+      }
+
       if (url.pathname === '/api/order' && req.method === 'GET') {
-        const o = (await loadOrders()).find((x) => String(x.ncmId) === clean(url.searchParams.get('id'), 40));
+        const o = byId(await loadOrders(), clean(url.searchParams.get('id'), 40));
         return o ? send(res, 200, { order: o }) : send(res, 404, { error: 'Order not found' });
       }
 
@@ -274,26 +351,28 @@ http.createServer(async (req, res) => {
       if (url.pathname === '/api/orders' && req.method === 'GET') {
         const q = clean(url.searchParams.get('q'), 60).toLowerCase();
         let list = (await loadOrders()).slice().reverse();
-        if (q) list = list.filter((o) => [o.name, o.phone, o.phone2, o.ncmId, o.trackId, o.bill && o.bill.no, o.to, o.status].join(' ').toLowerCase().includes(q));
+        const flt = url.searchParams.get('filter');
+        if (flt === 'draft') list = list.filter((o) => o.draft); else if (flt === 'sent') list = list.filter((o) => !o.draft);
+        if (q) list = list.filter((o) => [o.name, o.phone, o.phone2, o.ncmId, o.trackId, o.bill && o.bill.no, o.to, o.status, o.draft ? 'draft not sent' : ''].join(' ').toLowerCase().includes(q));
         return send(res, 200, { orders: list.slice(0, 100), total: list.length });
       }
 
       if (url.pathname === '/api/track') {
         const id = clean(url.searchParams.get('id'), 40);
         const all = await loadOrders();
-        const order = all.find((o) => String(o.ncmId) === id);
+        const order = byId(all, id);
         if (!order) return send(res, 404, { error: 'Order not found' });
-        if (TEST_MODE || String(id).startsWith('TEST-')) return send(res, 200, { order, history: [{ status: order.status, time: order.createdAt }], comments: [] });
+        if (TEST_MODE || order.draft || !order.ncmId || String(order.ncmId).startsWith('TEST-')) return send(res, 200, { order, history: [{ status: order.status, time: order.createdAt }], comments: [] });
         const pick = (x, ...keys) => { for (const k of keys) if (x && x[k] != null && x[k] !== '') return x[k]; return ''; };
         const arr = toList;
-        const [st, cm] = await Promise.allSettled([ncm('GET', '/api/v1/order/status?id=' + encodeURIComponent(id)), ncm('GET', '/api/v1/order/comment?id=' + encodeURIComponent(id))]);
+        const [st, cm] = await Promise.allSettled([ncm('GET', '/api/v1/order/status?id=' + encodeURIComponent(order.ncmId)), ncm('GET', '/api/v1/order/comment?id=' + encodeURIComponent(order.ncmId))]);
         const history = st.status === 'fulfilled' ? arr(st.value).map((x) => typeof x === 'string' ? { status: x, time: '' } : { status: pick(x, 'status', 'Status'), time: pick(x, 'added_time', 'addedTime', 'time', 'date') }) : [];
         const comments = cm.status === 'fulfilled' ? arr(cm.value).map((x) => typeof x === 'string' ? { text: x } : { text: pick(x, 'comments', 'comment', 'text'), by: pick(x, 'addedBy', 'added_by', 'user'), time: pick(x, 'added_time', 'addedTime', 'time', 'date') }) : [];
         if (!history.length && st.status === 'rejected') return send(res, 502, { error: 'Courier tracking unavailable: ' + st.reason.message });
         const latest = history.length ? history[history.length - 1].status : order.status;
         let dirty = false;
         if (latest && latest !== order.status) { order.status = latest; dirty = true; }
-        if (!order.trackId && !order.trackTried) { order.trackId = await fetchTrackId(id); order.trackTried = true; dirty = true; }
+        if (!order.trackId && !order.trackTried) { order.trackId = await fetchTrackId(order.ncmId); order.trackTried = true; dirty = true; }
         if (dirty) await saveOrders(all);
         return send(res, 200, { order, history, comments });
       }
@@ -304,18 +383,41 @@ http.createServer(async (req, res) => {
       if (url.pathname.startsWith('/api/order/') && req.method === 'POST') {
         const b = await readBody(req);
         const all = await loadOrders();
-        const o = all.find((x) => String(x.ncmId) === String(b.ncmId));
+        const o = byId(all, b.id ?? b.ncmId);
         if (!o) return send(res, 404, { error: 'Order not found' });
-        const live = !TEST_MODE && !String(o.ncmId).startsWith('TEST-');
+        const live = !o.draft && !TEST_MODE && !!o.ncmId && !String(o.ncmId).startsWith('TEST-');
         const comment = (text) => ncm('POST', '/api/v1/order/comment', { orderid: Number(o.ncmId) || o.ncmId, comments: String(text).slice(0, 500) });
+
+        if (url.pathname === '/api/order/send') {
+          // The one place an NCM shipment is created. Guarded so one order can never be sent twice.
+          if (!o.draft) return send(res, 409, { error: 'This order was already sent to NCM' + (o.ncmId ? ' (Order ID #' + o.ncmId + ')' : '') });
+          if (sending.has(o.id)) return send(res, 409, { error: 'This order is already being sent, please wait a moment' });
+          const bad = orderProblem(o); if (bad) return send(res, 400, { error: bad });
+          sending.add(o.id);
+          try {
+            let ncmId = null, trackId = '', status;
+            if (TEST_MODE) { ncmId = 'TEST-' + Date.now().toString().slice(-6); status = 'Test order (not sent to NCM)'; }
+            else {
+              const r = await ncm('POST', '/api/v1/order/create', ncmPayload(o));
+              ncmId = r.orderid ?? r.order_id ?? r.id ?? (r.data && (r.data.orderid ?? r.data.id)) ?? (findKey(r, /^order_?id$/i) || null);
+              trackId = findKey(r, /track/i);
+              if (!trackId && ncmId) trackId = await fetchTrackId(ncmId);
+              status = ncmId ? 'Pickup Order Created' : 'Sent to NCM (order ID not returned)';
+            }
+            // NCM now has it. Re-read the list so edits made meanwhile aren't lost, then mark it sent.
+            const fresh = await loadOrders();
+            const t = byId(fresh, o.id) || (fresh.push(o), o);
+            Object.assign(t, { ncmId, trackId, status, sentAt: new Date().toISOString() }); delete t.draft;
+            await saveOrders(fresh);
+            return send(res, 200, { ok: true, order: t });
+          } finally { sending.delete(o.id); }
+        }
 
         if (url.pathname === '/api/order/update') {
           const next = { deliveryType: clean(b.deliveryType, 20), from: clean(b.from, 60), to: clean(b.to, 60), priority: clean(b.priority, 10),
             name: clean(b.name, 100), address: clean(b.address, 250), phone: digits(b.phone), phone2: digits(b.phone2),
             packageType: clean(b.packageType, 100), cod: Math.max(0, Math.round(Number(b.cod) || 0)), description: clean(b.description, 300), weight: cleanWeight(b.weight) };
-          if (!DELIVERY_TYPES.includes(next.deliveryType) || !PRIORITIES.includes(next.priority)) return send(res, 400, { error: 'Choose a valid delivery type and priority' });
-          if (!next.from || !next.to) return send(res, 400, { error: 'Origin and destination are required' });
-          if (!next.name || !next.address || next.phone.length < 10 || !next.packageType) return send(res, 400, { error: 'Name, address, a 10-digit phone and package type are required' });
+          const bad = orderProblem(next); if (bad) return send(res, 400, { error: bad });
           const changes = Object.keys(next).filter((k) => String(o[k] ?? '') !== String(next[k]));
           Object.assign(o, next, { editedAt: new Date().toISOString() });
           await saveOrders(all);
@@ -328,6 +430,7 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/api/order/note') {
           const text = clean(b.text, 500);
           if (!text) return send(res, 400, { error: 'Write a message first' });
+          if (o.draft) return send(res, 400, { error: 'This order has not been sent to NCM yet. Send it first.' });
           if (!live) return send(res, 200, { ok: true, note: 'Test order: message not sent to NCM' });
           await comment(text);
           return send(res, 200, { ok: true });
@@ -335,11 +438,14 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/api/order/bill') {
           if (b.remove) { delete o.bill; await saveOrders(all); return send(res, 200, { ok: true }); }
           if (!b.bill || !clean(b.bill.no, 40)) return send(res, 400, { error: 'Enter a bill number' });
-          o.bill = makeBill({ ...b.bill, on: true }, o);
+          const bill = makeBill({ ...b.bill, on: true }, o);
+          if (!bill.items.length) return send(res, 400, { error: 'Add at least one product to the bill' });
+          o.bill = bill;
           await saveOrders(all);
           return send(res, 200, { ok: true, bill: o.bill });
         }
         if (url.pathname === '/api/order/delete') {
+          const bad = checkDeleteKey(req, b.passkey); if (bad) return send(res, bad.code, { error: bad.error });
           await saveOrders(all.filter((x) => x !== o));
           return send(res, 200, { ok: true });
         }
