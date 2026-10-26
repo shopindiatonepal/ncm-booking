@@ -8,9 +8,10 @@
   * { box-sizing: border-box; }
   body { margin:0; background:#eceff3; font:15px/1.35 Georgia,'Times New Roman',serif; color:#111; }
   .bar { display:flex; gap:8px; padding:10px; justify-content:center; flex-wrap:wrap; font-family:system-ui,sans-serif; }
-  .bar button { padding:10px 16px; border:0; border-radius:8px; background:#0b6bcb; color:#fff; font:600 14px system-ui; }
+  .bar button { padding:10px 16px; border:0; border-radius:8px; background:#0b6bcb; color:#fff; font:600 14px system-ui; cursor:pointer; }
   .bar button.alt { background:#fff; color:#111; border:1px solid #cbd0d8; }
   .tip { text-align:center; font:13px system-ui; color:#667; padding:0 12px 8px; }
+  .prev { text-align:center; font:15px system-ui; color:#111; padding:0 12px 8px; }
   .sheet { background:#fff; width:100%; max-width:560px; margin:0 auto 24px; padding:18px; border:1px solid #cfd4dc; }
   input, textarea { font:inherit; border:0; border-bottom:1px dotted #555; background:transparent; width:100%; padding:2px 0; color:#111; }
   input:focus, textarea:focus { outline:none; background:#fffbe0; }
@@ -22,18 +23,22 @@
   table { width:100%; border-collapse:collapse; margin-top:10px; }
   th, td { border:1px solid #333; padding:4px 6px; vertical-align:top; }
   th { text-align:center; font-size:13px; }
-  td input { border:0; }
+  td input, td textarea { border:0; }
+  td textarea { resize:none; width:100%; display:block; }
   td.n, td input.n { text-align:right; }
-  .grow td { height:230px; }
+  td.sn { text-align:center; }
+  td.pc { position:relative; padding-right:30px; }
+  .rm { position:absolute; right:3px; top:3px; width:24px; height:24px; border:1px solid #d9b3ae; background:#fff; color:#c0392b; border-radius:50%; font:700 16px/1 system-ui; cursor:pointer; padding:0; }
+  .addrow { margin-top:8px; padding:8px 14px; border:1px dashed #0b6bcb; background:#f4f9ff; color:#0b6bcb; border-radius:8px; font:600 14px system-ui; cursor:pointer; }
   .tot td { border:1px solid #333; }
-  .words { border:1px solid #333; border-top:0; padding:6px; min-height:60px; }
   .sig { margin-top:26px; display:flex; justify-content:flex-end; gap:8px; align-items:baseline; }
   .sig input { width:50%; }
   .hide { display:none; }
   @media print {
-    body { background:#fff; } .bar, .tip { display:none; }
+    body { background:#fff; } .bar, .tip, .prev, .noprint { display:none !important; }
     .sheet { border:0; max-width:none; margin:0; padding:0; }
     input, textarea { border-bottom:0 !important; }
+    td.pc { padding-right:6px; }
   }
 </style>
 </head>
@@ -44,8 +49,9 @@
   <button id="saveBtn" class="alt hide" onclick="saveToOrder()">Save to order</button>
   <span style="display:flex;gap:6px"><input id="nextNo" placeholder="Next bill no." style="width:130px;padding:8px;border:1px solid #cbd0d8;border-radius:8px;background:#fff"><button class="alt" onclick="setNext()">Set</button></span>
 </div>
+<div class="prev" id="prevBill"></div>
 <div class="tip" id="orderTip" style="display:none"></div>
-<div class="tip">Every field is editable. Bill numbers continue from the last printed bill. Used a number in another store? Type the next one in the box above and tap Set, or just edit "Bill no" on the bill. Letters work too (A-241 becomes A-242).</div>
+<div class="tip">Every field is editable. Use "+ Add product" for more items on the same bill. Bill numbers continue from the last one used; to follow a number from another store, type the next one above and tap Set. Letters work too (A-241 becomes A-242).</div>
 
 <div class="sheet">
   <div class="head">
@@ -54,7 +60,7 @@
     <input id="sPhone" placeholder="Phone" data-keep>
   </div>
   <div class="line" style="justify-content:space-between">
-    <span class="line" style="flex:1"><b>Bill no:</b><input id="billNo" inputmode="numeric"></span>
+    <span class="line" style="flex:1"><b>Bill no:</b><input id="billNo"></span>
     <span class="line" style="flex:1"><b>Date (BS):</b><input id="date" placeholder="2083/07/08"></span>
   </div>
   <div class="line"><b>PAN no:</b><input id="pan" placeholder="PAN number" inputmode="numeric" data-keep></div>
@@ -63,16 +69,9 @@
 
   <table>
     <thead><tr><th style="width:9%">S.No.</th><th>Particulars</th><th style="width:10%">Qty</th><th style="width:15%">Rate</th><th style="width:18%">Amount</th></tr></thead>
-    <tbody>
-      <tr class="grow">
-        <td style="text-align:center">1</td>
-        <td><textarea id="part" rows="3" style="border:0;resize:none;width:100%"></textarea></td>
-        <td><input id="qty" class="n" inputmode="numeric" value="1"></td>
-        <td><input id="rate" class="n" inputmode="numeric" value="100"></td>
-        <td><input id="amt" class="n" readonly></td>
-      </tr>
-    </tbody>
+    <tbody id="rows"></tbody>
   </table>
+  <button type="button" class="addrow noprint" onclick="addRow()">+ Add product</button>
   <table style="margin-top:0">
     <tr class="tot">
       <td rowspan="3" style="width:63%;vertical-align:top"><b>In words:</b><div id="words" style="min-height:50px;margin-top:4px"></div></td>
@@ -88,6 +87,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const P = new URLSearchParams(location.search);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // --- amount in words (Rupees)
 const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -108,46 +108,81 @@ function words(n) {
   return parts.join(' ') + ' Rupees Only';
 }
 
-const num = (id) => Number($(id).value.replace(/[^\d.]/g, '')) || 0;
-function calc() {
-  const a = num('qty') * num('rate');
-  $('amt').value = a || '';
-  $('total').value = a || '';
-  const g = Math.max(0, a - num('disc'));
-  $('grand').value = g || '';
-  $('words').textContent = words(g);
-}
-
-function product() { return P.get('product') || ''; }
-function setParticulars(p) { $('part').value = p ? `Handling fee for ${p}` : 'Handling fee for '; }
-
-function init() {
-  document.querySelectorAll('[data-keep]').forEach((el) => { el.value = localStorage.getItem('bill_' + el.id) || ''; el.addEventListener('input', () => localStorage.setItem('bill_' + el.id, el.value)); });
-  $('billNo').value = nextBillNo();
-  $('date').value = todayBS();
-  $('cName').value = P.get('name') || '';
-  $('cAddr').value = P.get('address') || '';
-  setParticulars(product());
+// --- products on the bill. ITEMS is the source of truth; rows are drawn from it.
+let ITEMS = [];
+const num = (v) => Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+const r2 = (n) => Math.round(n * 100) / 100;
+const fmt = (n) => (n ? String(r2(n)) : '');
+const newItem = (product) => ({ name: 'Handling fee for ' + (product || ''), qty: 1, rate: 100 });
+function render() {
+  const rows = ITEMS.map((it, i) =>
+    '<tr class="item"><td class="sn">' + (i + 1) + '</td>' +
+    '<td class="pc"><textarea data-i="' + i + '" data-f="name" rows="2">' + esc(it.name) + '</textarea>' + (ITEMS.length > 1 ? '<button type="button" class="rm noprint" data-rm="' + i + '" title="Remove this product">×</button>' : '') + '</td>' +
+    '<td><input data-i="' + i + '" data-f="qty" class="n" inputmode="decimal" value="' + esc(it.qty) + '"></td>' +
+    '<td><input data-i="' + i + '" data-f="rate" class="n" inputmode="decimal" value="' + esc(it.rate) + '"></td>' +
+    '<td class="n" id="amt' + i + '"></td></tr>').join('');
+  const fill = '<tr class="fill" style="height:' + Math.max(24, 200 - ITEMS.length * 56) + 'px"><td></td><td></td><td></td><td></td><td></td></tr>';
+  $('rows').innerHTML = rows + fill;
   calc();
 }
-// remember the bill number when printing so the next bill continues the series
+function calc() {
+  let total = 0;
+  ITEMS.forEach((it, i) => { const a = r2(num(it.qty) * num(it.rate)); total += a; const el = $('amt' + i); if (el) el.textContent = fmt(a); });
+  total = r2(total);
+  $('total').value = fmt(total);
+  const g = Math.max(0, r2(total - num($('disc').value)));
+  $('grand').value = fmt(g);
+  $('words').textContent = words(g);
+}
+function addRow() {
+  ITEMS.push(newItem(''));
+  render();
+  const tas = document.querySelectorAll('#rows textarea'), ta = tas[tas.length - 1];
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+$('rows').addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.f) { ITEMS[+t.dataset.i][t.dataset.f] = t.value; calc(); }
+});
+$('rows').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-rm]');
+  if (b && ITEMS.length > 1) { ITEMS.splice(+b.dataset.rm, 1); render(); }
+});
+$('disc').addEventListener('input', calc);
+
+// --- bill number: shared counter with the rest of the site, kept in this browser
+function showPrev() { const p = lsGet('bill_lastNo'); $('prevBill').innerHTML = p ? 'Previous bill no: <b>' + esc(p) + '</b>' : 'No previous bill yet'; }
 // A bill opened from an order already has its own number; printing it must not move the counter.
 let loadedBill = false, orderId = P.get('order') || '';
-function saveBill() { if (!loadedBill) markBillUsed($('billNo').value); }
+function saveBill() { if (!loadedBill) { markBillUsed($('billNo').value); showPrev(); } }
 window.addEventListener('beforeprint', saveBill);
 function printBill() { saveBill(); window.print(); }
 function setNext() {
   const v = $('nextNo').value.trim(); if (!v) return;
   lsSet('bill_next', v); if (!loadedBill) $('billNo').value = v; $('nextNo').value = '';
 }
+// a new device continues the same series: take the last bill number the site knows about
+async function seedLast() {
+  try { const r = await fetch('/api/lastbill'); if (r.ok) { const d = await r.json(); if (d.no && !lsGet('bill_lastNo')) lsSet('bill_lastNo', d.no); } } catch {}
+}
+
+function init() {
+  document.querySelectorAll('[data-keep]').forEach((el) => { el.value = lsGet('bill_' + el.id) || ''; el.addEventListener('input', () => lsSet('bill_' + el.id, el.value)); });
+  $('billNo').value = nextBillNo();
+  $('date').value = todayBS();
+  $('cName').value = P.get('name') || '';
+  $('cAddr').value = P.get('address') || '';
+  ITEMS = [newItem(P.get('product') || '')];
+  render(); showPrev();
+}
 function newBill() {
   history.replaceState(null, '', '/bill');
   P.delete('name'); P.delete('address'); P.delete('product'); P.delete('order');
   orderId = ''; loadedBill = false; $('saveBtn').classList.add('hide'); $('orderTip').style.display = 'none';
-  $('disc').value = ''; $('qty').value = 1; $('rate').value = 100; init();
+  $('disc').value = ''; init();
 }
-['qty', 'rate', 'disc'].forEach((i) => $(i).addEventListener('input', calc));
 
+// --- a bill that belongs to an order
 function tip(msg, ok = true) { const t = $('orderTip'); t.style.display = 'block'; t.textContent = msg; t.style.color = ok ? '#14804a' : '#c0392b'; }
 async function loadOrderBill() {
   try {
@@ -155,36 +190,38 @@ async function loadOrderBill() {
     if (r.status === 401) { tip('Please open the booking page and log in first, then open this bill again.', false); return; }
     const d = await r.json();
     if (!r.ok) { tip(d.error || 'Could not load the order', false); return; }
-    const o = d.order, b = o.bill;
+    const o = d.order, b = o.bill, label = o.ncmId ? 'order #' + o.ncmId : 'this order';
     $('saveBtn').classList.remove('hide');
     $('cName').value = o.name || ''; $('cAddr').value = o.address || '';
     if (b) {
       loadedBill = true;
       $('billNo').value = b.no || ''; $('date').value = b.date || todayBS();
-      $('part').value = b.particulars || ''; $('qty').value = String(b.qty); $('rate').value = String(b.rate); $('disc').value = b.discount ? String(b.discount) : '';
-      tip('Saved bill for order #' + o.ncmId + '. Edit anything, then tap "Save to order" to keep the changes.');
+      const src = Array.isArray(b.items) && b.items.length ? b.items : [{ name: b.particulars, qty: b.qty, rate: b.rate }]; // older bills had one line
+      ITEMS = src.map((x) => ({ name: x.name || '', qty: x.qty, rate: x.rate }));
+      $('disc').value = b.discount ? String(b.discount) : '';
+      render();
+      tip('Saved bill for ' + label + '. Edit anything, then tap "Save to order" to keep the changes.');
     } else {
-      setParticulars(o.packageType);
-      tip('Order #' + o.ncmId + ' has no bill yet. Fill it in and tap "Save to order".');
+      ITEMS = [newItem(o.packageType)]; render();
+      tip('Bill for ' + label + '. Set the bill number, add products if needed, then tap "Save to order".');
     }
-    calc();
   } catch (e) { tip('Could not load the order: ' + e.message, false); }
 }
 async function saveToOrder() {
-  const body = { ncmId: orderId, bill: { no: $('billNo').value.trim(), date: $('date').value.trim(), particulars: $('part').value.trim(), qty: num('qty') || 1, rate: num('rate'), discount: num('disc') } };
+  const body = { id: orderId, bill: { no: $('billNo').value.trim(), date: $('date').value.trim(), discount: num($('disc').value),
+    items: ITEMS.map((x) => ({ name: String(x.name).trim(), qty: num(x.qty) || 1, rate: num(x.rate) })) } };
   if (!body.bill.no) { tip('Enter a bill number first', false); return; }
   try {
     const r = await fetch('/api/order/bill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) { tip(d.error || 'Could not save', false); return; }
     if (!loadedBill) markBillUsed(body.bill.no);
-    loadedBill = true;
-    tip('Saved to order #' + orderId + '.');
+    loadedBill = true; showPrev();
+    tip('Saved to the order.');
   } catch (e) { tip('Could not save: ' + e.message, false); }
 }
 
-init();
-if (orderId) loadOrderBill();
+(async () => { await seedLast(); init(); if (orderId) await loadOrderBill(); })();
 </script>
 </body>
 </html>
