@@ -40,9 +40,11 @@
     input, textarea { border-bottom:0 !important; }
     td.pc { padding-right:6px; }
   }
+  body.embed { padding-top:4px; }
 </style>
 </head>
 <body>
+<script>if (new URLSearchParams(location.search).get('embed')) document.addEventListener('DOMContentLoaded', () => document.body.classList.add('embed'));</script>
 <div class="bar">
   <button onclick="printBill()">Print / Save PDF</button>
   <button class="alt" onclick="newBill()">New bill</button>
@@ -166,8 +168,9 @@ async function seedLast() {
   try { const r = await fetch('/api/lastbill'); if (r.ok) { const d = await r.json(); if (d.no && !lsGet('bill_lastNo')) lsSet('bill_lastNo', d.no); } } catch {}
 }
 
+const DEFAULTS = { sName: 'Edeals Np Pvt. Ltd.', sAddr: 'Tersapatti, Pokhara-03', sPhone: '9845522014', pan: '621197349' };
 function init() {
-  document.querySelectorAll('[data-keep]').forEach((el) => { el.value = lsGet('bill_' + el.id) || ''; el.addEventListener('input', () => lsSet('bill_' + el.id, el.value)); });
+  document.querySelectorAll('[data-keep]').forEach((el) => { el.value = lsGet('bill_' + el.id) || DEFAULTS[el.id] || ''; el.addEventListener('input', () => lsSet('bill_' + el.id, el.value)); });
   $('billNo').value = nextBillNo();
   $('date').value = todayBS();
   $('cName').value = P.get('name') || '';
@@ -218,6 +221,7 @@ async function saveToOrder() {
     if (!loadedBill) markBillUsed(body.bill.no);
     loadedBill = true; showPrev();
     tip('Saved to the order.');
+    try { parent.postMessage({ billSaved: orderId }, '*'); } catch {}
   } catch (e) { tip('Could not save: ' + e.message, false); }
 }
 
