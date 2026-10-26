@@ -1,4 +1,4 @@
-// Shared by the booking page and the bill page.
+// Shared by the booking page and the bill page. //
 
 // AD -> BS. Table covers BS 2083 (14 Apr 2026 - 13 Apr 2027) only; outside that, type the date yourself.
 const BS2083 = [31, 32, 31, 32, 31, 30, 30, 30, 29, 29, 30, 31];
